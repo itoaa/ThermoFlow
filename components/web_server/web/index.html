@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ThermoFlow</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ThermoFlow</h1>
+            <span class="status" id="system-status">Connecting...</span>
+        </header>
+
+        <main>
+            <section class="card" id="sensors">
+                <h2>Sensors</h2>
+                <div class="sensor-grid" id="sensor-grid">
+                    <!-- Populated by JS -->
+                </div>
+            </section>
+
+            <section class="card" id="fans">
+                <h2>Fans</h2>
+                <div class="fan-list" id="fan-list">
+                    <!-- Populated by JS -->
+                </div>
+            </section>
+
+            <section class="card" id="network">
+                <h2>Network</h2>
+                <div class="network-status" id="network-status">
+                    <p>WiFi: <span id="wifi-status">--</span></p>
+                    <p>MQTT: <span id="mqtt-status">--</span></p>
+                    <p>Signal: <span id="rssi">--</span> dBm</p>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>ThermoFlow v1.0.0</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

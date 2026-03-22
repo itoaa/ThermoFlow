@@ -1,0 +1,12 @@
+{
+  "name": "web_server",
+  "version": "1.0.0",
+  "description": "HTTPS Web Server with REST API",
+  "keywords": ["web", "https", "rest", "api"],
+  "frameworks": ["espidf"],
+  "platforms": ["espressif32"],
+  "headers": ["web_server.h"],
+  "dependencies": {
+    "bblanchon/ArduinoJson": "^7.0.0"
+  }
+}

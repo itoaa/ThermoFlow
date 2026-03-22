@@ -1,0 +1,9 @@
+{
+  "name": "sht4x_sensor",
+  "version": "1.0.0",
+  "description": "SHT40 Temperature and Humidity Sensor Driver",
+  "keywords": ["sensor", "i2c", "sht40", "temperature", "humidity"],
+  "frameworks": ["espidf"],
+  "platforms": ["espressif32"],
+  "headers": ["sht4x_sensor.h"]
+}

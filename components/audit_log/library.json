@@ -1,0 +1,9 @@
+{
+  "name": "audit_log",
+  "version": "1.0.0",
+  "description": "Security Audit Logging with Integrity",
+  "keywords": ["audit", "log", "security", "integrity"],
+  "frameworks": ["espidf"],
+  "platforms": ["espressif32"],
+  "headers": ["audit_log.h"]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "security_utils",
+  "version": "1.0.0",
+  "description": "Security Manager with Ed25519 and Certificate Support",
+  "keywords": ["security", "crypto", "ed25519", "certificates", "auth"],
+  "frameworks": ["espidf"],
+  "platforms": ["espressif32"],
+  "headers": ["security_manager.h", "ed25519_impl.h"]
+}

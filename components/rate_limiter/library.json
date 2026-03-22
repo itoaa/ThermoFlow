@@ -1,0 +1,9 @@
+{
+  "name": "rate_limiter",
+  "version": "1.0.0",
+  "description": "Token Bucket Rate Limiter",
+  "keywords": ["rate", "limit", "token", "bucket", "security"],
+  "frameworks": ["espidf"],
+  "platforms": ["espressif32"],
+  "headers": ["rate_limiter.h"]
+}

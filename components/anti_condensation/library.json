@@ -1,0 +1,8 @@
+{
+  "name": "anti_condensation",
+  "version": "1.0.0",
+  "description": "Anti-Condensation Protection",
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"],
+  "headers": ["anti_condensation.h"]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "display_driver",
+  "version": "1.0.0",
+  "description": "SSD1306 OLED Display using Adafruit Library",
+  "keywords": ["display", "oled", "ssd1306", "i2c"],
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"],
+  "headers": ["display_manager.h"],
+  "dependencies": {
+    "adafruit/Adafruit SSD1306": "^2.5.0",
+    "adafruit/Adafruit GFX Library": "^1.11.0"
+  }
+}

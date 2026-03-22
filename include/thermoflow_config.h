@@ -68,14 +68,6 @@
 #define HUMIDITY_MIN_VALID            0.0f    // %
 #define HUMIDITY_MAX_VALID            100.0f  // %
 
-// Fan control limits
-#define FAN_SPEED_MIN_PERCENT         0
-#define FAN_SPEED_MAX_PERCENT         100
-#define FAN_SPEED_OFF                 0
-#define FAN_SPEED_LOW                 30
-#define FAN_SPEED_MEDIUM              60
-#define FAN_SPEED_HIGH                100
-
 // MQTT configuration (SR-003)
 #define MQTT_BROKER_DEFAULT           ""
 #define MQTT_PORT_DEFAULT             8883    // TLS

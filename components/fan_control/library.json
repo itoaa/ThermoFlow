@@ -1,0 +1,8 @@
+{
+  "name": "fan_control",
+  "version": "1.0.0",
+  "description": "PWM Fan Controller",
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"],
+  "headers": ["fan_controller.h"]
+}

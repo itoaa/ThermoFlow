@@ -88,22 +88,129 @@ typedef struct {
     float temp_max;             /**< Maximum temperature (100% speed) */
 } fan_thermostat_params_t;
 
-// Function prototypes
+/**
+ * @brief Initialize fan controller
+ * 
+ * @param config Configuration structure
+ * @return ESP_OK on success
+ * 
+ * @note Fans start in OFF state (SR-009: fail-safe)
+ */
 esp_err_t fan_controller_init(void);
+
+/**
+ * @brief Deinitialize fan controller
+ */
 esp_err_t fan_controller_deinit(void);
+
+/**
+ * @brief Set fan speed
+ * 
+ * @param fan Fan identifier
+ * @param speed_percent 0-100
+ * @return ESP_OK on success
+ * 
+ * @note Will be clamped to valid range and ignored in fail-safe mode
+ */
 esp_err_t fan_controller_set_speed(fan_id_t fan, uint8_t speed_percent);
+
+/**
+ * @brief Get current fan speed
+ * 
+ * @param fan Fan identifier
+ * @return Current speed 0-100, or 0 if error
+ */
 uint8_t fan_controller_get_speed(fan_id_t fan);
+
+/**
+ * @brief Set fan control mode
+ * 
+ * @param fan Fan identifier
+ * @param mode Control mode
+ * @return ESP_OK on success
+ */
 esp_err_t fan_controller_set_mode(fan_id_t fan, fan_mode_t mode);
+
+/**
+ * @brief Get fan control mode
+ * 
+ * @param fan Fan identifier
+ * @return Current mode
+ */
 fan_mode_t fan_controller_get_mode(fan_id_t fan);
+
+/**
+ * @brief Get fan status
+ * 
+ * @param fan Fan identifier
+ * @param[out] status Status structure to fill
+ * @return ESP_OK on success
+ */
 esp_err_t fan_controller_get_status(fan_id_t fan, fan_status_t *status);
+
+/**
+ * @brief Set thermostat parameters
+ * 
+ * @param fan Fan identifier
+ * @param params Thermostat parameters
+ * @return ESP_OK on success
+ */
 esp_err_t fan_controller_set_thermostat_params(fan_id_t fan, const fan_thermostat_params_t *params);
-uint8_t fan_controller_calc_speed_from_temp(float current_temp, float setpoint, float temp_min, float temp_max);
+
+/**
+ * @brief Calculate fan speed from temperature (for external control)
+ * 
+ * @param current_temp Current temperature
+ * @param setpoint Target temperature
+ * @param temp_min Temperature for 0% speed
+ * @param temp_max Temperature for 100% speed
+ * @return Calculated speed 0-100
+ */
+uint8_t fan_controller_calc_speed_from_temp(float current_temp, float setpoint, 
+                                               float temp_min, float temp_max);
+
+/**
+ * @brief Enter fail-safe mode
+ * 
+ * Immediately stops all fans. Requires explicit mode change to resume.
+ * 
+ * @param reason Reason code for logging
+ * @return ESP_OK on success
+ * 
+ * @note SR-009: Actuator fail-safe requirement
+ */
 esp_err_t fan_controller_enter_failsafe(const char *reason);
+
+/**
+ * @brief Exit fail-safe mode
+ * 
+ * @return ESP_OK on success
+ */
 esp_err_t fan_controller_exit_failsafe(void);
+
+/**
+ * @brief Check if in fail-safe mode
+ * 
+ * @return true if fail-safe is active
+ */
 bool fan_controller_is_failsafe(void);
+
+/**
+ * @brief Check for fan faults
+ * 
+ * Monitors tachometer signals if available
+ * 
+ * @param fan Fan identifier
+ * @return true if fault detected
+ */
 bool fan_controller_check_fault(fan_id_t fan);
 
-// Helper function
+/**
+ * @brief Convert fan_speed_t enum to percentage
+ * 
+ * @param speed Speed enum value
+ * @return Percentage 0-100
+ */
 static inline uint8_t fan_speed_to_percent(fan_speed_t speed) {
     return (uint8_t)speed;
 }

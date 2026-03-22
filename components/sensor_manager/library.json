@@ -1,0 +1,12 @@
+{
+  "name": "sensor_manager",
+  "version": "1.0.0",
+  "description": "Multi-Sensor Orchestration Manager",
+  "keywords": ["sensor", "manager", "i2c", "orchestration"],
+  "frameworks": ["espidf"],
+  "platforms": ["espressif32"],
+  "headers": ["sensor_manager.h"],
+  "dependencies": {
+    "sht4x_sensor": "^1.0.0"
+  }
+}
