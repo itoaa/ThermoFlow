@@ -29,19 +29,19 @@ ThermoFlow monitors temperature and humidity for:
 
 ## Quick Start
 
+Requires ESP-IDF installed at `$HOME/esp-idf`.
+
 ```bash
-# Install PlatformIO
-pip install platformio
+cd ThermoFlow
 
 # Build
-pio run -e esp32-s3
+./build.sh
 
-# Upload
-pio run --target upload
-
-# Monitor
-pio device monitor
+# Flash and monitor
+./flash.sh /dev/ttyUSB0
 ```
+
+See [BUILD.md](BUILD.md) for detailed instructions.
 
 ## Architecture
 
@@ -49,13 +49,13 @@ See `docs/architecture/` for system design documents.
 
 ## Security
 
-See `PROJECT_FRAMEWORK.md` for security requirements and compliance.
+See [PROJECT_FRAMEWORK.md](PROJECT_FRAMEWORK.md) for security requirements and compliance.
 
 ## Status
 
-🚧 **Work in progress** - Skeleton implementation
+✅ **Complete** - All core components implemented
 
-See `docs/IMPLEMENTATION_STATUS.md` for detailed status.
+See [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for detailed status.
 
 ## License
 

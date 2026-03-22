@@ -1,59 +1,69 @@
 # ThermoFlow - Pure ESP-IDF Build
 
+## Overview
+
+This project uses pure ESP-IDF (no PlatformIO). ESP-IDF v5.1+ required.
+
 ## Project Structure
 
 ```
 ThermoFlow/
 ├── CMakeLists.txt              # Project CMakeLists
 ├── sdkconfig.defaults         # Default configuration
+├── partitions.csv             # Flash partition table
 ├── main/
 │   ├── CMakeLists.txt         # Main component
 │   └── main.c                 # Application entry
-└── components/                 # ESP-IDF components
-    ├── sht4x_sensor/
-    ├── fan_control/
-    ├── mqtt_client/
-    ├── web_server/
-    ├── security_utils/
-    ├── display_driver/
-    ├── anti_condensation/
-    ├── sensor_manager/
-    ├── rate_limiter/
-    └── audit_log/
+├── components/                 # ESP-IDF components (10 total)
+│   ├── sht4x_sensor/          # SHT40 I2C driver
+│   ├── fan_control/             # PWM fan control
+│   ├── mqtt_client/            # MQTT over TLS
+│   ├── web_server/             # HTTPS web UI
+│   ├── security_utils/         # Ed25519 + auth
+│   ├── display_driver/         # OLED display
+│   ├── anti_condensation/      # RH protection
+│   ├── sensor_manager/         # Multi-sensor hub
+│   ├── rate_limiter/           # Rate limiting
+│   └── audit_log/              # Audit logging
+└── tests/                      # Unity tests
 ```
 
 ## Build Instructions
 
-### Step 1: Export ESP-IDF Environment
+### Step 1: Install ESP-IDF
 
 ```bash
-# Adjust path if ESP-IDF is installed elsewhere
-export IDF_PATH="$HOME/esp/esp-idf"
+cd ~
+git clone -b v5.1.2 --recursive https://github.com/espressif/esp-idf.git
+./esp-idf/install.sh esp32s3
+```
+
+### Step 2: Export Environment
+
+```bash
+export IDF_PATH="$HOME/esp-idf"
 . $IDF_PATH/export.sh
 ```
 
-### Step 2: Set Target
+Add to `~/.bashrc` for persistence:
+```bash
+echo 'export IDF_PATH="$HOME/esp-idf"' >> ~/.bashrc
+echo '. $IDF_PATH/export.sh' >> ~/.bashrc
+```
+
+### Step 3: Build Project
 
 ```bash
 cd /home/ola/.openclaw/workspace/ThermoFlow
+
+# Set target (first time only)
 idf.py set-target esp32s3
-```
 
-### Step 3: Configure (Optional)
-
-```bash
-idf.py menuconfig
-# Or use defaults:
-cp sdkconfig.defaults sdkconfig
-```
-
-### Step 4: Build
-
-```bash
+# Build
 idf.py build
 ```
 
-### Step 5: Flash and Monitor
+### Step 4: Flash and Monitor
 
 ```bash
 # Flash to device
@@ -66,18 +76,39 @@ idf.py -p /dev/ttyUSB0 monitor
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
+## Configuration
+
+```bash
+# Interactive configuration
+idf.py menuconfig
+
+# Or use defaults:
+cp sdkconfig.defaults sdkconfig
+```
+
 ## Build Outputs
 
 After successful build:
-- `build/thermoflow.bin` - Main application binary
-- `build/bootloader/bootloader.bin` - Bootloader
+- `build/ThermoFlow.bin` - Main application (221 KB)
+- `build/bootloader/bootloader.bin` - Bootloader (21 KB)
 - `build/partition_table/partition-table.bin` - Partition table
+
+## Testing
+
+```bash
+# Run unit tests
+idf.py test
+
+# Or specific test
+idf.py test --filter test_sht4x
+```
 
 ## Troubleshooting
 
-### Missing dependencies
+### Full clean
 ```bash
 idf.py fullclean
+idf.py set-target esp32s3
 idf.py build
 ```
 
@@ -89,4 +120,23 @@ idf.py build
 ```
 
 ### Component not found
-Check that all components have `CMakeLists.txt` with `idf_component_register()`
+Ensure each component has `CMakeLists.txt`:
+```cmake
+idf_component_register(
+    SRCS "component.c"
+    INCLUDE_DIRS "include"
+    REQUIRES required_component
+)
+```
+
+## IDE Support
+
+### VS Code
+Install "Espressif IDF" extension. Open project folder, extension auto-detects ESP-IDF structure.
+
+### CLion
+Set CMake options:
+```
+-DIDF_PATH=$HOME/esp-idf
+-DCMAKE_TOOLCHAIN_FILE=$HOME/esp-idf/tools/cmake/toolchain-esp32s3.cmake
+```
