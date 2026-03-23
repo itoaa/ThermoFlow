@@ -1,0 +1,8 @@
+{
+    "name": "sht3x_sensor",
+    "version": "1.0.0",
+    "description": "Sensirion SHT3x Temperature and Humidity Sensor Driver",
+    "keywords": "sht30, sht31, sht35, temperature, humidity, i2c, sensirion",
+    "frameworks": "espidf",
+    "platforms": "espressif32"
+}
