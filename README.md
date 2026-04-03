@@ -5,7 +5,7 @@
 ThermoFlow monitors temperature and humidity for:
 - **Mobile AC units** (cold and hot air monitoring)
 - **DIY heat exchangers** with fan control
-- **Mini-FTX systems** (Frånluftsventilation med värmeåtervinning) ⭐ NEW!
+- **Mini-FTX systems** (Frånluftsventilation med värmeåtervinning)
 
 ## Use Cases
 
@@ -22,20 +22,29 @@ ThermoFlow monitors temperature and humidity for:
 - **Fan Control**: PWM control for 2 fans
 - **Anti-condensation**: Automatic protection at >90% RH
 - **MQTT**: Secure TLS connection to Home Assistant
-- **Web Interface**: Modern responsive UI (HTTPS)
+- **Web Interface**: Modern SPA with charts (HTTPS)
 - **OTA Updates**: Signed firmware updates (Ed25519)
 - **Security**: IEC 62443 SL-2 compliant
+- **WiFi Manager**: AP mode for easy configuration
 
-### Mini-FTX Extension (v1.4.0) ⭐
+### Mini-FTX Extension (v1.5.0)
 - **Heat Recovery**: Calculate efficiency (up to 95%)
 - **Energy Tracking**: Monitor saved energy in kWh/day
-- **Frost Protection**: Automatic detection and prevention with hysteresis
-- **Filter Monitoring**: Track filter status with pressure drop
+- **Frost Protection**: Automatic detection and prevention
+- **Filter Monitoring**: Track filter status
 - **Smart Control**: Auto-adjust fan speed based on conditions
 - **Airflow Balance**: Monitor supply/exhaust balance
-- **Web Dashboard**: Real-time FTX visualization
 
-See [FTX_EXTENSION.md](docs/FTX_EXTENSION.md) for detailed FTX documentation.
+### Web GUI (v1.5.0) 🎨
+- **Single Page Application** - No page reloads
+- **Real-time Charts** - Chart.js for temperature history
+- **Animated Gauges** - Visual temperature/humidity displays
+- **Dark/Light Theme** - Auto theme switching
+- **PWA Support** - Install as app, offline capable
+- **Toast Notifications** - Non-intrusive feedback
+- **Keyboard Shortcuts** - Ctrl+1-4 for views
+
+See [docs/FTX_EXTENSION.md](docs/FTX_EXTENSION.md) for FTX documentation.
 
 ## Hardware
 
@@ -80,12 +89,13 @@ See [BUILD.md](BUILD.md) and [BUILD_ESP_IDF.md](BUILD_ESP_IDF.md) for detailed i
 
 ## Security
 
-See [PROJECT_FRAMEWORK.md](PROJECT_FRAMEWORK.md) for security requirements and compliance.
+See [PROJECT_FRAMEWORK.md](PROJECT_FRAMEWORK.md) for security requirements.
 
 ## Status
 
 ✅ **Complete** - All core components implemented  
-✅ **Mini-FTX** - Full FTX support with heat recovery (v1.4.0)  
+✅ **Mini-FTX** - Full FTX support (v1.4.0)  
+✅ **Modern Web GUI** - SPA with PWA (v1.5.0)
 
 See [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for detailed status.
 

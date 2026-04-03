@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.0] - 2026-04-03
+
+### Added - WiFi Manager & Modern Web GUI 🌐
+
+- **WiFi Manager Component** (`components/wifi_manager/`)
+  - AP mode with MAC-based naming (`ThermoFlow-XXXX`)
+  - Web-based WiFi configuration
+  - Credentials saved to NVS (flash)
+  - Automatic reconnection on boot
+  - Fallback to AP mode if connection fails
+  - `wifi_manager_get_status()`, `wifi_manager_configure()`, `wifi_manager_reset()`
+
+- **Modern Web Interface** (`components/web_server/web/`)
+  - Single Page Application (SPA) - no page reloads
+  - **Chart.js integration** for temperature history
+  - **Animated gauges** for real-time sensor values
+  - **Dark/Light/Auto theme** with localStorage persistence
+  - **PWA support**: Service worker, offline capability, manifest
+  - **Toast notifications** for user feedback
+  - **Keyboard shortcuts**: Ctrl+1-4 for views, Ctrl+R to refresh
+  - **Glassmorphism design** with smooth animations
+  - **Responsive layout** with mobile bottom navigation
+  - New endpoints: `/api/wifi/config`, `/api/device/info`
+
+- **Build Automation**
+  - Git pre-commit hook for automatic binary copying
+  - `binaries/` folder with latest compiled firmware
+
+### Changed
+- Updated `main.c` to integrate WiFi manager initialization
+- Updated `web_server.c` with new WiFi config endpoints
+- Modernized all CSS with CSS variables for theming
+- Replaced static HTML with dynamic SPA architecture
+
+### API Changes
+- Added `POST /api/wifi/config` - Configure WiFi credentials
+- Added `GET /api/device/info` - Device info (MAC, name, version)
+- Added `tf_wifi_config_t` struct (avoids ESP-IDF naming conflict)
+
+---
+
 ## [1.4.0] - 2026-04-03
 
 ### Added - Mini-FTX Extension 🏠
@@ -51,16 +92,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `quick_build.sh` - Snabb inkrementell bygg
 
 ### Security Fixes (5 Critical)
-1. **Frost Protection Actions** - Tidigare bara detektion, nu faktiska åtgärder (stoppa/minska fläktar)
+1. **Frost Protection Actions** - Tidigare bara detektion, nu faktiska åtgärder
 2. **Fan Speed Hysteresis** - Förhindrar fladder vid gränsvärden
-3. **MQTT Rate Limiting** - Max 1 publikation per intervall för att förhindra överbelastning
-4. **Sensor Validation** - Kollar NaN, infinity, rimliga värden innan användning
+3. **MQTT Rate Limiting** - Max 1 publikation per intervall
+4. **Sensor Validation** - Kollar NaN, infinity, rimliga värden
 5. **Airflow Balance Monitoring** - Detekterar obalans mellan tilluft/frånluft
 
 ### Technical
 - Target: ESP32-S3
 - ESP-IDF: v5.1.2
-- Components: 11 (10 original + 1 ny heat_recovery)
+- Components: 12 (11 original + 1 ny heat_recovery + wifi_manager)
 
 ---
 
@@ -131,6 +172,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Description**: 5 security weaknesses identified and fixed in Mini-FTX implementation.
 **Status**: ✅ Fixed in v1.4.0
 
+### [SEC-2026-04-03-002] WiFi Manager
+**Severity**: Info
+**Description**: New WiFi Manager component with AP mode and web configuration.
+**Status**: ✅ Implemented in v1.5.0
+
 ### Components
 - SR-001: Input Validation (sensor_manager) ✅
 - SR-002: Authentication (security_utils) ✅
@@ -150,3 +196,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Implementation Status](docs/IMPLEMENTATION_STATUS.md)
 - [Build Instructions](BUILD.md)
 - [Mini-FTX Extension](docs/FTX_EXTENSION.md)
+- [Web GUI](components/web_server/web/)
