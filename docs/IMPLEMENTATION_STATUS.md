@@ -1,7 +1,7 @@
 # ThermoFlow Implementation Status
 
-**Document Version:** 1.3.0  
-**Last Updated:** 2026-03-22  
+**Document Version:** 1.5.0  
+**Last Updated:** 2026-04-03  
 **Project:** ThermoFlow - ESP32-S3 Climate Monitoring and Control System
 
 ---
@@ -20,6 +20,8 @@
 | **sensor_manager** | ✅ Complete | 3 | ~300 | ⏳ N/A | Validation (SR-001) |
 | **rate_limiter** | ✅ Complete | 3 | ~650 | ⏳ N/A | Token bucket (SR-006) |
 | **audit_log** | ✅ Complete | 3 | ~600 | ⏳ N/A | Checksums (SR-005) |
+| **heat_recovery** | ✅ Complete | 3 | ~800 | ⏳ N/A | FTX calculations |
+| **wifi_manager** | ✅ Complete | 3 | ~500 | ⏳ N/A | AP mode + NVS storage |
 | **Tests** | ✅ Complete | 4 | ~800 | ✅ Complete | Unity framework |
 
 **Legend:**
@@ -28,9 +30,55 @@
 
 ---
 
-## Recent Changes (2026-03-22)
+## Recent Changes (2026-04-03)
 
-### Migration to Pure ESP-IDF
+### v1.5.0 - WiFi Manager & Modern Web GUI 🌐
+
+**WiFi Manager Component:**
+- ✅ AP mode with MAC-based naming (`ThermoFlow-XXXX`)
+- ✅ Web-based WiFi configuration
+- ✅ Credentials saved to NVS (flash)
+- ✅ Automatic reconnection on boot
+- ✅ Fallback to AP mode if connection fails
+- ✅ `wifi_manager_get_status()`, `wifi_manager_configure()`, `wifi_manager_reset()`
+
+**Modern Web Interface:**
+- ✅ Single Page Application (SPA) - no page reloads
+- ✅ Chart.js integration for temperature history
+- ✅ Animated gauges for real-time sensor values
+- ✅ Dark/Light/Auto theme with localStorage persistence
+- ✅ PWA support: Service worker, offline capability, manifest
+- ✅ Toast notifications for user feedback
+- ✅ Keyboard shortcuts: Ctrl+1-4 for views, Ctrl+R to refresh
+- ✅ Glassmorphism design with smooth animations
+- ✅ Responsive layout with mobile bottom navigation
+
+**Build Automation:**
+- ✅ Git pre-commit hook for automatic binary copying
+- ✅ `binaries/` folder with latest compiled firmware
+
+---
+
+### v1.4.0 - Mini-FTX Extension 🏠
+
+**Heat Recovery Component** (`components/heat_recovery/`):
+- ✅ Värmeåtervinningsberäkningar (effektivitet, energibesparing)
+- ✅ Frostskydd med hysteresis (min 60s aktiveringstid)
+- ✅ Fläktstyrning med hysteresis (förhindrar fladder)
+- ✅ Luftflödesbalans-övervakning
+- ✅ Rate limiting för MQTT (max 1 publikation per 5-60s)
+- ✅ Sensorvalidering (NaN, infinity, rimliga värden)
+
+**Security Fixes (5 Critical):**
+1. ✅ Frost Protection Actions - Tidigare bara detektion, nu faktiska åtgärder
+2. ✅ Fan Speed Hysteresis - Förhindrar fladder vid gränsvärden
+3. ✅ MQTT Rate Limiting - Max 1 publikation per intervall
+4. ✅ Sensor Validation - Kollar NaN, infinity, rimliga värden
+5. ✅ Airflow Balance Monitoring - Detekterar obalans mellan tilluft/frånluft
+
+---
+
+### v1.2.0-v1.3.0 - Migration to Pure ESP-IDF
 
 **Removed PlatformIO support:**
 - ✅ Deleted `platformio.ini`
@@ -39,34 +87,23 @@
 - ✅ Updated all documentation to reference ESP-IDF only
 - ✅ Build scripts use ESP-IDF exclusively
 
-### Code Quality Improvements
+**Code Quality Improvements:**
+1. ✅ Removed duplicate .cpp files
+2. ✅ Enhanced Documentation in sensor_manager.c, rate_limiter.c, audit_log.c
+3. ✅ Fixed compilation errors in main.c, rate_limiter.c
 
-1. **Removed duplicate .cpp files**
-   - Deleted: `fan_controller.cpp`, `anti_condensation.cpp`, `display_manager.cpp`, `mqtt_client.cpp`
-   - Kept only .c implementations for consistency
+---
 
-2. **Enhanced Documentation**
-   - **sensor_manager.c**: Added complete file header with feature list, changelog, and inline comments
-   - **rate_limiter.c**: Added comprehensive documentation for token bucket algorithm
-   - **audit_log.c**: Added detailed documentation for audit logging system
-   - **anti_condensation.h**: Added missing callback type definition and all function declarations
-
-3. **Fixed Compilation Issues**
-   - Added `#include <esp_chip_info.h>` to main.c
-   - Added `#include <string.h>` to fan_controller.c
-   - Updated `anti_condensation.h` with complete API
-   - Fixed struct member access in rate_limiter.c (len vs id_len)
-   - Added `esp_timer` to fan_control CMakeLists.txt REQUIRES
-
-### Build Status
+## Build Status
 
 ```
 ✅ Build successful
 Binary: build/ThermoFlow.bin
-Size: 0x365a0 bytes (221 KB)
-Flash usage: 21% (79% free space)
+Size: 0xb7780 bytes (~750 KB)
+Flash usage: 28% (72% free space)
 Target: ESP32-S3
-ESP-IDF: v5.1+
+ESP-IDF: v5.1.2
+Components: 12
 ```
 
 ---
@@ -90,10 +127,10 @@ All source files now follow consistent documentation:
  *
  * @author Ola Andersson
  * @version 1.0.0
- * @date 2026-03-22
+ * @date 2026-04-03
  *
  * @section changelog Change Log
- * - 1.0.0 (2026-03-22): Initial implementation
+ * - 1.0.0 (2026-04-03): Initial implementation
  *   - Feature A
  *   - Feature B
  */
@@ -137,8 +174,8 @@ All source files now follow consistent documentation:
 ```
 ThermoFlow/
 ├── main/
-│   ├── CMakeLists.txt
-│   └── main.c                        ✅ Well documented
+│   ├── CMakeLists.txt                ✅ Includes wifi_manager
+│   └── main.c                        ✅ WiFi manager integration
 ├── components/
 │   ├── sht4x_sensor/
 │   │   ├── CMakeLists.txt
@@ -156,14 +193,16 @@ ThermoFlow/
 │   │   ├── library.json
 │   │   └── mqtt_client.c
 │   ├── web_server/
-│   │   ├── CMakeLists.txt
+│   │   ├── CMakeLists.txt            ✅ Includes wifi_manager
 │   │   ├── include/web_server.h
 │   │   ├── library.json
-│   │   ├── web_server.c
-│   │   └── web/                      ✅ Web UI files
-│   │       ├── index.html
-│   │       ├── style.css
-│   │       └── script.js
+│   │   ├── web_server.c              ✅ New WiFi endpoints
+│   │   └── web/                      ✅ Modern SPA GUI
+│   │       ├── index.html            ✅ SPA with Charts
+│   │       ├── style.css             ✅ Glassmorphism theme
+│   │       ├── script.js             ✅ PWA, Toast notifications
+│   │       ├── manifest.json         ✅ PWA manifest
+│   │       └── sw.js                 ✅ Service Worker
 │   ├── security_utils/
 │   │   ├── CMakeLists.txt
 │   │   ├── include/
@@ -194,11 +233,23 @@ ThermoFlow/
 │   │   ├── include/rate_limiter.h
 │   │   ├── library.json
 │   │   └── rate_limiter.c            ✅ Enhanced docs
-│   └── audit_log/
+│   ├── audit_log/
+│   │   ├── CMakeLists.txt
+│   │   ├── include/audit_log.h
+│   │   ├── library.json
+│   │   └── audit_log.c               ✅ Enhanced docs
+│   ├── heat_recovery/                ✅ NEW v1.4.0
+│   │   ├── CMakeLists.txt
+│   │   ├── include/
+│   │   │   └── heat_recovery.h
+│   │   ├── library.json
+│   │   └── heat_recovery.c
+│   └── wifi_manager/                 ✅ NEW v1.5.0
 │       ├── CMakeLists.txt
-│       ├── include/audit_log.h
-│       ├── library.json
-│       └── audit_log.c               ✅ Enhanced docs
+│       ├── include/
+│       │   └── wifi_manager.h
+│       ├── wifi_manager.c
+│       └── wifi_config.html
 ├── tests/
 │   ├── CMakeLists.txt
 │   ├── test_main.c
@@ -215,18 +266,28 @@ ThermoFlow/
 │   ├── thermoflow_config.h
 │   ├── web_server.h
 │   └── wifi_manager.h
+├── binaries/                         ✅ Pre-compiled firmware
+│   ├── ThermoFlow.bin
+│   ├── bootloader.bin
+│   ├── partition-table.bin
+│   └── README.md
 ├── docs/
-│   └── IMPLEMENTATION_STATUS.md        ✅ This file
+│   ├── FTX_EXTENSION.md              ✅ Mini-FTX documentation
+│   ├── MQTT_FTX_API.md               ✅ MQTT API docs
+│   └── IMPLEMENTATION_STATUS.md      ✅ This file
 ├── data/
 │   └── cacert.pem
+├── .git/hooks/
+│   └── pre-commit                    ✅ Auto-copy binaries
 ├── CMakeLists.txt
-├── CHANGELOG.md                      ✅ ESP-IDF only
+├── CHANGELOG.md                      ✅ v1.5.0 updates
 ├── PROJECT_FRAMEWORK.md
-├── README.md                         ✅ ESP-IDF only
-├── BUILD.md                          ✅ ESP-IDF instructions
+├── README.md                         ✅ v1.5.0 features
+├── BUILD.md                          ✅ WiFi config docs
 ├── BUILD_ESP_IDF.md                  ✅ Detailed ESP-IDF guide
 ├── build.sh                          ✅ ESP-IDF build script
 ├── flash.sh                          ✅ ESP-IDF flash script
+├── quick_build.sh                    ✅ Fast incremental build
 ├── sdkconfig.defaults
 ├── partitions.csv
 └── .gitignore                        ✅ Excludes build artifacts
@@ -256,6 +317,23 @@ idf.py build
 
 ---
 
+## WiFi Configuration
+
+### First Boot (AP Mode):
+1. Enheten startar som `ThermoFlow-XXXX` (där XXXX är sista 4 hex av MAC)
+2. Anslut till AP:n från din telefon/dator
+3. Öppna http://192.168.4.1 i webbläsare
+4. Ange ditt WiFi-nätverk och lösenord
+5. Enheten startar om och ansluter till nätverket
+
+### API Endpoints:
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/device/info` | GET | MAC, namn, version, IP |
+| `/api/wifi/config` | POST | Spara WiFi-konfiguration |
+
+---
+
 ## Prerequisites
 
 **ESP-IDF Installation:**
@@ -276,26 +354,37 @@ export IDF_PATH="$HOME/esp-idf"
 ## Next Steps
 
 1. ✅ **Build system working** - All components compile successfully
-2. **Hardware testing** - Test on actual ESP32-S3 hardware
-3. **Integration testing** - End-to-end sensor + fan scenarios
-4. **SBOM documentation** - Create dependency inventory for SR-008
+2. ✅ **WiFi Manager** - AP mode and web configuration implemented
+3. ✅ **Modern Web GUI** - SPA with PWA support
+4. **Hardware testing** - Test on actual ESP32-S3 hardware
+5. **Integration testing** - End-to-end sensor + fan scenarios
+6. **SBOM documentation** - Create dependency inventory for SR-008
 
 ---
 
 ## Change Log
 
-### 2026-03-22 - v1.3.0
+### 2026-04-03 - v1.5.0
+- ✅ WiFi Manager component with AP mode
+- ✅ Modern Web GUI (SPA, Charts, PWA)
+- ✅ Git pre-commit hook for binaries
+- ✅ Theme support (Dark/Light/Auto)
+- ✅ Toast notifications
+- ✅ Keyboard shortcuts
+
+### 2026-04-03 - v1.4.0
+- ✅ Mini-FTX Extension (heat_recovery component)
+- ✅ Frost protection with hysteresis
+- ✅ Fan speed hysteresis
+- ✅ MQTT rate limiting
+- ✅ Sensor validation
+- ✅ Airflow balance monitoring
+
+### 2026-03-22 - v1.2.0-v1.3.0
 - ✅ Migrated from PlatformIO to pure ESP-IDF
 - ✅ Removed PlatformIO configuration files
-- ✅ Updated all documentation to ESP-IDF only
-- ✅ Build system uses ESP-IDF exclusively
-
-### 2026-03-22 - v1.2.0
-- ✅ Removed duplicate .cpp files
-- ✅ Enhanced documentation in sensor_manager.c, rate_limiter.c, audit_log.c
-- ✅ Fixed compilation errors in main.c, rate_limiter.c
-- ✅ Updated anti_condensation.h with complete API
-- ✅ Build verified successful
+- ✅ Enhanced documentation
+- ✅ Fixed compilation errors
 
 ### 2026-03-22 - v1.1.0
 - ✅ Unit tests with Unity framework
