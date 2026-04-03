@@ -1,65 +1,346 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="sv" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ThermoFlow</title>
-    <link rel="stylesheet" href="style.css">
+    <meta name="theme-color" content="#1a1a2e">
+    <title>ThermoFlow | Dashboard</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏠</text></svg>">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>ThermoFlow</h1>
-            <span class="status" id="system-status">Connecting...</span>
-        </header>
-
-        <nav class="nav-tabs">
-            <a href="index.html" class="nav-tab active">Overview</a>
-            <a href="ftx.html" class="nav-tab">Mini-FTX 🏠</a>
-        </nav>
-
-        <main>
-            <section class="card" id="sensors">
-                <h2>Sensors</h2>
-                <div class="sensor-grid" id="sensor-grid">
-                    <!-- Populated by JS -->
-                </div>
-            </section>
-
-            <section class="card" id="fans">
-                <h2>Fans</h2>
-                <div class="fan-list" id="fan-list">
-                    <!-- Populated by JS -->
-                </div>
-            </section>
-
-            <!-- Mini-FTX Promo Card -->
-            <section class="card ftx-promo">
-                <h2>🏠 Mini-FTX Available</h2>
-                <p>This device supports Mini-FTX (Frånluftsventilation med värmeåtervinning) mode.</p>
-                <div class="ftx-features">
-                    <span class="feature">⚡ Heat recovery monitoring</span>
-                    <span class="feature">🌡️ 4-sensor temperature flow</span>
-                    <span class="feature">💰 Energy savings tracking</span>
-                </div>
-                <a href="ftx.html" class="btn-primary">Open Mini-FTX Dashboard →</a>
-            </section>
-
-            <section class="card" id="network">
-                <h2>Network</h2>
-                <div class="network-status" id="network-status">
-                    <p>WiFi: <span id="wifi-status">--</span></p>
-                    <p>MQTT: <span id="mqtt-status">--</span></p>
-                    <p>Signal: <span id="rssi">--</span> dBm</p>
-                </div>
-            </section>
-        </main>
-
-        <footer>
-            <p>ThermoFlow v1.1.0 | <a href="ftx.html">Mini-FTX</a></p>
-        </footer>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loader">
+            <div class="loader-ring"></div>
+            <div class="loader-text">ThermoFlow</div>
+        </div>
     </div>
 
-    <script src="script.js"></script>
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <i class="fas fa-home"></i>
+            <span>ThermoFlow</span>
+        </div>
+        <div class="nav-links">
+            <a href="#" class="nav-link active" data-view="dashboard">
+                <i class="fas fa-chart-line"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="#" class="nav-link" data-view="sensors">
+                <i class="fas fa-thermometer-half"></i>
+                <span>Sensordata</span>
+            </a>
+            <a href="#" class="nav-link" data-view="ftx">
+                <i class="fas fa-recycle"></i>
+                <span>FTX</span>
+            </a>
+            <a href="#" class="nav-link" data-view="settings">
+                <i class="fas fa-cog"></i>
+                <span>Inställningar</span>
+            </a>
+        </div>
+        <div class="nav-actions">
+            <button class="btn-icon" id="theme-toggle" title="Växla tema">
+                <i class="fas fa-moon"></i>
+            </button>
+            <button class="btn-icon" id="refresh-btn" title="Uppdatera">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Dashboard View -->
+        <div id="view-dashboard" class="view active">
+            <header class="page-header">
+                <div>
+                    <h1>Dashboard</h1>
+                    <p class="subtitle">Realtidsöverblick av ditt system</p>
+                </div>
+                <div class="connection-status" id="connection-status">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Ansluter...</span>
+                </div>
+            </header>
+
+            <!-- Quick Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon temp">
+                        <i class="fas fa-temperature-high"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="avg-temp">--</span>
+                        <span class="stat-label">Medeltemp</span>
+                        <span class="stat-unit">°C</span>
+                    </div>
+                    <div class="stat-trend" id="temp-trend">
+                        <i class="fas fa-arrow-up"></i>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon humidity">
+                        <i class="fas fa-tint"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="avg-humidity">--</span>
+                        <span class="stat-label">Luftfuktighet</span>
+                        <span class="stat-unit">%</span>
+                    </div>
+                    <div class="stat-trend" id="humidity-trend">
+                        <i class="fas fa-minus"></i>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon efficiency">
+                        <i class="fas fa-bolt"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="ftx-efficiency">--</span>
+                        <span class="stat-label">FTX Effektivitet</span>
+                        <span class="stat-unit">%</span>
+                    </div>
+                    <div class="stat-trend positive">
+                        <i class="fas fa-leaf"></i>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon power">
+                        <i class="fas fa-plug"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="power-saved">--</span>
+                        <span class="stat-label">Energi återvunnen</span>
+                        <span class="stat-unit">W</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gauges Section -->
+            <div class="gauges-grid">
+                <div class="glass-card">
+                    <h3><i class="fas fa-temperature-low"></i> Utomhustemperatur</h3>
+                    <div class="gauge-container">
+                        <canvas id="outdoor-temp-gauge"></canvas>
+                        <div class="gauge-value" id="outdoor-temp-value">--°C</div>
+                    </div>
+                </div>
+                <div class="glass-card">
+                    <h3><i class="fas fa-temperature-high"></i> Inomhustemperatur</h3>
+                    <div class="gauge-container">
+                        <canvas id="indoor-temp-gauge"></canvas>
+                        <div class="gauge-value" id="indoor-temp-value">--°C</div>
+                    </div>
+                </div>
+                <div class="glass-card">
+                    <h3><i class="fas fa-tint"></i> Luftfuktighet</h3>
+                    <div class="gauge-container">
+                        <canvas id="humidity-gauge"></canvas>
+                        <div class="gauge-value" id="humidity-value">--%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart Section -->
+            <div class="glass-card chart-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-chart-area"></i> Temperaturhistorik</h3>
+                    <div class="chart-controls">
+                        <button class="btn-sm active" data-range="1h">1h</button>
+                        <button class="btn-sm" data-range="6h">6h</button>
+                        <button class="btn-sm" data-range="24h">24h</button>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="temp-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sensors View -->
+        <div id="view-sensors" class="view">
+            <header class="page-header">
+                <h1>Sensordata</h1>
+                <p class="subtitle">Detaljerade mätningar från alla sensorer</p>
+            </header>
+            <div class="sensors-detail-grid" id="sensors-detail-grid">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+
+        <!-- FTX View -->
+        <div id="view-ftx" class="view">
+            <header class="page-header">
+                <h1>FTX-system</h1>
+                <p class="subtitle">Frånluftsventilation med värmeåtervinning</p>
+            </header>
+            
+            <div class="ftx-diagram">
+                <div class="ftx-flow">
+                    <div class="flow-section outdoor">
+                        <div class="flow-label">Utomhusluft</div>
+                        <div class="flow-temp" id="ftx-outdoor-temp">--°C</div>
+                        <div class="flow-arrow"><i class="fas fa-arrow-right"></i></div>
+                    </div>
+                    <div class="ftx-unit">
+                        <div class="ftx-core">
+                            <i class="fas fa-exchange-alt"></i>
+                            <span>Värmeväxlare</span>
+                            <div class="efficiency-badge" id="ftx-badge">--%</div>
+                        </div>
+                    </div>
+                    <div class="flow-section supply">
+                        <div class="flow-label">Tilluft</div>
+                        <div class="flow-temp" id="ftx-supply-temp">--°C</div>
+                        <div class="flow-arrow"><i class="fas fa-arrow-right"></i></div>
+                    </div>
+                </div>
+                <div class="ftx-flow reverse">
+                    <div class="flow-section extract">
+                        <div class="flow-label">Frånluft</div>
+                        <div class="flow-temp" id="ftx-extract-temp">--°C</div>
+                        <div class="flow-arrow"><i class="fas fa-arrow-left"></i></div>
+                    </div>
+                    <div class="ftx-unit">
+                        <div class="ftx-core exhaust">
+                            <i class="fas fa-wind"></i>
+                            <span>Utblås</span>
+                        </div>
+                    </div>
+                    <div class="flow-section exhaust-air">
+                        <div class="flow-label">Avluft</div>
+                        <div class="flow-temp" id="ftx-exhaust-temp">--°C</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ftx-controls">
+                <div class="glass-card">
+                    <h3>Fläktstyrning</h3>
+                    <div class="fan-control">
+                        <label>Tilluftsfläkt</label>
+                        <div class="slider-container">
+                            <input type="range" class="modern-slider" id="supply-fan" min="0" max="100" value="0">
+                            <span class="slider-value" id="supply-fan-value">0%</span>
+                        </div>
+                    </div>
+                    <div class="fan-control">
+                        <label>Frånluftsfläkt</label>
+                        <div class="slider-container">
+                            <input type="range" class="modern-slider" id="exhaust-fan" min="0" max="100" value="0">
+                            <span class="slider-value" id="exhaust-fan-value">0%</span>
+                        </div>
+                    </div>
+                    <div class="mode-toggle">
+                        <button class="btn-toggle active" data-mode="auto">Auto</button>
+                        <button class="btn-toggle" data-mode="manual">Manuell</button>
+                    </div>
+                </div>
+                
+                <div class="glass-card">
+                    <h3>Status</h3>
+                    <div class="status-list">
+                        <div class="status-item" id="status-frost">
+                            <i class="fas fa-snowflake"></i>
+                            <span>Frostskydd</span>
+                            <div class="status-badge inactive">Inaktiv</div>
+                        </div>
+                        <div class="status-item" id="status-bypass">
+                            <i class="fas fa-route"></i>
+                            <span>Bypass</span>
+                            <div class="status-badge inactive">Stängd</div>
+                        </div>
+                        <div class="status-item" id="status-filter">
+                            <i class="fas fa-filter"></i>
+                            <span>Filter</span>
+                            <div class="status-badge ok">OK</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings View -->
+        <div id="view-settings" class="view">
+            <header class="page-header">
+                <h1>Inställningar</h1>
+                <p class="subtitle">Konfiguration och systeminformation</p>
+            </header>
+            
+            <div class="settings-grid">
+                <div class="glass-card">
+                    <h3>Enhetsinformation</h3>
+                    <div class="info-list">
+                        <div class="info-item">
+                            <span class="info-label">Enhetsnamn</span>
+                            <span class="info-value" id="device-name">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">MAC-adress</span>
+                            <span class="info-value" id="device-mac">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Firmware</span>
+                            <span class="info-value" id="firmware-version">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">IP-adress</span>
+                            <span class="info-value" id="device-ip">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">WiFi-status</span>
+                            <span class="info-value" id="wifi-state">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card">
+                    <h3>Utseende</h3>
+                    <div class="setting-item">
+                        <label>Tema</label>
+                        <div class="segmented-control">
+                            <button class="segment active" data-theme="dark">
+                                <i class="fas fa-moon"></i> Mörkt
+                            </button>
+                            <button class="segment" data-theme="light">
+                                <i class="fas fa-sun"></i> Ljust
+                            </button>
+                            <button class="segment" data-theme="auto">
+                                <i class="fas fa-adjust"></i> Auto
+                            </button>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <label>Uppdateringsintervall</label>
+                        <div class="slider-container">
+                            <input type="range" class="modern-slider" id="update-interval" min="1" max="60" value="5">
+                            <span class="slider-value" id="update-interval-value">5s</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card danger-zone">
+                    <h3><i class="fas fa-exclamation-triangle"></i> Åtgärder</h3>
+                    <button class="btn-danger" id="reset-wifi">
+                        <i class="fas fa-wifi"></i> Återställ WiFi
+                    </button>
+                    <button class="btn-danger" id="restart-device">
+                        <i class="fas fa-redo"></i> Starta om enhet
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="/script.js"></script>
 </body>
 </html>
