@@ -78,6 +78,19 @@ typedef enum {
 } frost_protection_state_t;
 
 /**
+ * @brief Fan speed limit reasons (for UI display)
+ */
+typedef enum {
+    LIMIT_REASON_NONE = 0,           // No limit - running normally
+    LIMIT_REASON_FROST_RISK,       // Limited due to frost risk
+    LIMIT_REASON_CONDENSATION,     // Limited due to condensation risk
+    LIMIT_REASON_HIGH_HUMIDITY,     // Limited due to high humidity
+    LIMIT_REASON_FILTER_PRESSURE,  // Limited due to filter pressure
+    LIMIT_REASON_USER_OVERRIDE,    // Limited by user setting
+    LIMIT_REASON_AUTO_OPTIMIZE     // Limited for energy optimization
+} fan_limit_reason_t;
+
+/**
  * @brief Heat recovery data structure
  */
 typedef struct {
@@ -104,6 +117,13 @@ typedef struct {
     float airflow_exhaust_m3h;         // Exhaust airflow (m³/h)
     float airflow_balance_percent;       // Balance: supply vs exhaust
     
+    // Fan speed limits (NEW - for UI display)
+    uint8_t fan_speed_current;         // Current actual speed
+    uint8_t fan_speed_max_safe;          // Maximum safe speed (limited)
+    uint8_t fan_speed_requested;         // What user/auto requested
+    fan_limit_reason_t fan_limit_reason; // Why speed is limited
+    const char* fan_limit_description;   // Human-readable reason
+    
     // Filter monitoring
     float filter_pressure_pa;          // Pressure drop across filter
     uint32_t filter_runtime_hours;     // Hours since last filter change
@@ -114,6 +134,7 @@ typedef struct {
     bool frost_protection_active;      // Pre-heater or defrost active
     bool bypass_active;                // Summer bypass engaged
     bool airflow_unbalanced;           // >10% difference
+    bool condensation_risk;              // High condensation risk detected
     
     // Rate limiting
     uint32_t last_sensor_update_ms;
@@ -166,6 +187,12 @@ uint8_t ftx_recommend_fan_speed_hysteresis(
     const heat_recovery_data_t *data,
     uint8_t current_speed);
 
+/* NEW: Calculate maximum safe fan speed and reason (for UI/MQTT) */
+void ftx_calculate_max_safe_speed(heat_recovery_data_t *data, uint8_t requested_speed);
+
+/* Check for condensation risk (NEW) */
+bool ftx_check_condensation_risk(const heat_recovery_data_t *data);
+
 /* Check airflow balance between supply and exhaust */
 float ftx_check_airflow_balance(float supply_flow, float exhaust_flow);
 
@@ -180,6 +207,9 @@ ftx_status_t ftx_get_filter_status(float pressure_pa);
 
 /* Get string representation of status */
 const char* ftx_status_to_string(ftx_status_t status);
+
+/* Get string description of fan limit reason (for UI/MQTT) */
+const char* ftx_limit_reason_to_string(fan_limit_reason_t reason);
 
 /* Calculate daily energy savings */
 float ftx_daily_savings(float avg_power_w);

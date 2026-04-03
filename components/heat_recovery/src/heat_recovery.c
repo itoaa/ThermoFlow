@@ -10,11 +10,12 @@
 static float s_core_efficiency = FTX_CORE_EFFICIENCY_DEFAULT;
 static uint64_t s_frost_activation_time_us = 0;
 
-void ftx_init(float core_efficiency) {
+int ftx_init(float core_efficiency) {
     if (core_efficiency > 0.0f && core_efficiency <= 1.0f) {
         s_core_efficiency = core_efficiency;
     }
     s_frost_activation_time_us = 0;
+    return 0;
 }
 
 /**
@@ -209,6 +210,95 @@ uint8_t ftx_recommend_fan_speed_hysteresis(
 }
 
 /**
+ * @brief NEW: Calculate maximum safe fan speed and reason (for UI/MQTT)
+ */
+void ftx_calculate_max_safe_speed(heat_recovery_data_t *data, uint8_t requested_speed) {
+    if (!data) return;
+    
+    data->fan_speed_requested = requested_speed;
+    data->fan_speed_max_safe = requested_speed;  // Start with requested
+    data->fan_limit_reason = LIMIT_REASON_NONE;
+    data->fan_limit_description = "Normal drift - ingen begränsning";
+    
+    // Check frost risk
+    if (data->frost_state >= FROST_STATE_WARNING) {
+        data->fan_speed_max_safe = 30;  // Max 30% vid frost-risk
+        data->fan_limit_reason = LIMIT_REASON_FROST_RISK;
+        data->fan_limit_description = "Frost-risk - begränsat till 30% för att skydda värmeväxlaren";
+        if (requested_speed > 30) {
+            data->fan_speed_current = 30;
+        } else {
+            data->fan_speed_current = requested_speed;
+        }
+        return;
+    }
+    
+    // Check condensation risk
+    if (data->condensation_risk) {
+        data->fan_speed_max_safe = 50;
+        data->fan_limit_reason = LIMIT_REASON_CONDENSATION;
+        data->fan_limit_description = "Kondens-risk - begränsat till 50% för att förhindra vattenansamling";
+        if (requested_speed > 50) {
+            data->fan_speed_current = 50;
+        } else {
+            data->fan_speed_current = requested_speed;
+        }
+        return;
+    }
+    
+    // Check high humidity
+    if (data->exhaust_rh > 90.0f) {
+        data->fan_speed_max_safe = 60;
+        data->fan_limit_reason = LIMIT_REASON_HIGH_HUMIDITY;
+        data->fan_limit_description = "Hög luftfuktighet - begränsat till 60%";
+        if (requested_speed > 60) {
+            data->fan_speed_current = 60;
+        } else {
+            data->fan_speed_current = requested_speed;
+        }
+        return;
+    }
+    
+    // Check filter pressure
+    if (data->filter_pressure_pa > FILTER_PRESSURE_WARNING) {
+        data->fan_speed_max_safe = 70;
+        data->fan_limit_reason = LIMIT_REASON_FILTER_PRESSURE;
+        data->fan_limit_description = "Högt filtertryck - begränsat till 70%, byt filter snart";
+        if (requested_speed > 70) {
+            data->fan_speed_current = 70;
+        } else {
+            data->fan_speed_current = requested_speed;
+        }
+        return;
+    }
+    
+    // No limits apply
+    data->fan_speed_current = requested_speed;
+    data->fan_speed_max_safe = 100;
+}
+
+/**
+ * @brief NEW: Check for condensation risk
+ */
+bool ftx_check_condensation_risk(const heat_recovery_data_t *data) {
+    if (!data) return false;
+    
+    // Calculate dew point of exhaust air
+    // Simplified Magnus formula
+    float a = 17.271f;
+    float b = 237.7f;
+    float alpha = ((a * data->exhaust_temp) / (b + data->exhaust_temp)) + logf(data->exhaust_rh / 100.0f);
+    float dew_point = (b * alpha) / (a - alpha);
+    
+    // Risk if cold surface (outdoor side) is below dew point
+    if (data->outdoor_temp < dew_point + 2.0f) {  // 2°C margin
+        return true;
+    }
+    
+    return false;
+}
+
+/**
  * @brief Check airflow balance (FIX #5)
  */
 float ftx_check_airflow_balance(float supply_flow, float exhaust_flow) {
@@ -260,6 +350,22 @@ const char* ftx_status_to_string(ftx_status_t status) {
     }
 }
 
+/**
+ * @brief NEW: Get string description of fan limit reason (for UI/MQTT)
+ */
+const char* ftx_limit_reason_to_string(fan_limit_reason_t reason) {
+    switch (reason) {
+        case LIMIT_REASON_NONE: return "Ingen begränsning";
+        case LIMIT_REASON_FROST_RISK: return "Frost-risk";
+        case LIMIT_REASON_CONDENSATION: return "Kondens-risk";
+        case LIMIT_REASON_HIGH_HUMIDITY: return "Hög luftfuktighet";
+        case LIMIT_REASON_FILTER_PRESSURE: return "Högt filtertryck";
+        case LIMIT_REASON_USER_OVERRIDE: return "Användarbegränsning";
+        case LIMIT_REASON_AUTO_OPTIMIZE: return "Energibesparing";
+        default: return "Okänd anledning";
+    }
+}
+
 float ftx_daily_savings(float avg_power_w) {
     return (avg_power_w * 24.0f) / 1000.0f;
 }
@@ -282,6 +388,9 @@ int ftx_update(heat_recovery_data_t *data) {
         return -1;
     }
     
+    // Check condensation risk (NEW)
+    data->condensation_risk = ftx_check_condensation_risk(data);
+    
     // Check frost protection with hysteresis (FIX #1)
     frost_protection_state_t new_frost_state = ftx_check_frost_hysteresis(
         data->outdoor_temp, 
@@ -302,6 +411,9 @@ int ftx_update(heat_recovery_data_t *data) {
     }
     
     data->frost_state = new_frost_state;
+    
+    // Calculate max safe speed (NEW)
+    ftx_calculate_max_safe_speed(data, data->fan_speed_requested);
     
     // Check airflow balance (FIX #5)
     float balance = ftx_check_airflow_balance(
