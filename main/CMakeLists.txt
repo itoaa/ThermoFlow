@@ -20,4 +20,5 @@ idf_component_register(
         sensor_manager
         rate_limiter
         audit_log
+        wifi_manager
 )

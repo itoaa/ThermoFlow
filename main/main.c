@@ -32,6 +32,7 @@
 
 #include "fan_controller.h"           /* PWM fan control interface */
 #include "anti_condensation.h"          /* RH monitoring and alerts */
+#include "wifi_manager.h"             /* WiFi configuration and AP mode */
 
 /* Compile-time version string */
 #define THERMOFLOW_VERSION    "1.0.0"
@@ -166,6 +167,9 @@ static void control_task(void *pvParameters)
             fan_controller_set_speed(FAN_1, fan_speed);
         }
         
+        /* Run WiFi manager */
+        wifi_manager_run();
+        
         /* Log status periodically */
         static uint32_t last_log_time = 0;
         uint32_t now = xTaskGetTickCount();
@@ -217,9 +221,22 @@ void app_main(void)
         return;  /* Cannot continue without mutex */
     }
     
-    /* Step 3: Initialize fan controller (IEC 62443 SR-009 - fail-safe) */
+    /* Step 3: Initialize WiFi manager (AP mode or connect to configured WiFi) */
+    ESP_LOGI(TAG, "Initializing WiFi manager...");
+    esp_err_t ret = wifi_manager_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi manager init failed: %s", esp_err_to_name(ret));
+        /* Continue - system can work without WiFi */
+    } else {
+        ESP_LOGI(TAG, "WiFi manager initialized");
+        ESP_LOGI(TAG, "AP Name: %s", wifi_manager_get_ap_name());
+        ESP_LOGI(TAG, "WiFi Mode: %s", wifi_manager_is_ap_mode() ? "AP Mode (setup)" : 
+                 wifi_manager_is_connected() ? "Connected to WiFi" : "Connecting...");
+    }
+    
+    /* Step 4: Initialize fan controller (IEC 62443 SR-009 - fail-safe) */
     ESP_LOGI(TAG, "Initializing fan controller...");
-    esp_err_t ret = fan_controller_init();
+    ret = fan_controller_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Fan controller init failed: %s", esp_err_to_name(ret));
         /* Continue - fans not critical for basic operation */
@@ -227,7 +244,7 @@ void app_main(void)
         ESP_LOGI(TAG, "Fan controller initialized");
     }
     
-    /* Step 4: Initialize anti-condensation protection (IEC 62443 SR-010) */
+    /* Step 5: Initialize anti-condensation protection (IEC 62443 SR-010) */
     ESP_LOGI(TAG, "Initializing anti-condensation...");
     ret = anti_condensation_init();
     if (ret != ESP_OK) {
@@ -237,7 +254,7 @@ void app_main(void)
         ESP_LOGI(TAG, "Anti-condensation protection active");
     }
     
-    /* Step 5: Create control task (main application logic) */
+    /* Step 6: Create control task (main application logic) */
     ESP_LOGI(TAG, "Creating control task...");
     BaseType_t task_created = xTaskCreatePinnedToCore(
         control_task,              /* Task function */

@@ -6,11 +6,14 @@
 #include "web_server.h"
 #include "esp_log.h"
 #include "esp_http_server.h"
+#include "esp_wifi.h"  /* For esp_wifi_get_mac() */
 #include "cJSON.h"
 #include "string.h"
 
 // Include FTX components
 #include "heat_recovery.h"
+// Include WiFi manager for config endpoints
+#include "wifi_manager.h"
 
 static const char *TAG = "WEB_SERVER";
 static httpd_handle_t server = NULL;
@@ -25,6 +28,9 @@ static esp_err_t ftx_sensors_handler(httpd_req_t *req);
 static esp_err_t ftx_efficiency_handler(httpd_req_t *req);
 static esp_err_t ftx_control_handler(httpd_req_t *req);
 static esp_err_t ftx_status_handler(httpd_req_t *req);
+// WiFi config endpoints
+static esp_err_t wifi_config_handler(httpd_req_t *req);
+static esp_err_t device_info_handler(httpd_req_t *req);
 
 esp_err_t web_server_init(void)
 {
@@ -86,8 +92,26 @@ esp_err_t web_server_start(void)
     };
     httpd_register_uri_handler(server, &ftx_status_uri);
     
+    // Register WiFi config handlers
+    httpd_uri_t wifi_config_uri = {
+        .uri = "/api/wifi/config",
+        .method = HTTP_POST,
+        .handler = wifi_config_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &wifi_config_uri);
+    
+    httpd_uri_t device_info_uri = {
+        .uri = "/api/device/info",
+        .method = HTTP_GET,
+        .handler = device_info_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &device_info_uri);
+    
     ESP_LOGI(TAG, "Web server started on port %d", config.server_port);
     ESP_LOGI(TAG, "FTX API endpoints registered");
+    ESP_LOGI(TAG, "WiFi config endpoints registered");
     return ESP_OK;
 }
 
@@ -283,6 +307,103 @@ static esp_err_t ftx_control_handler(httpd_req_t *req)
     
     cJSON_Delete(json);
     return send_json_response(req, response);
+}
+
+// POST /api/wifi/config - Configure WiFi credentials
+static esp_err_t wifi_config_handler(httpd_req_t *req)
+{
+    char buf[512];
+    int ret, remaining = req->content_len;
+    
+    if (remaining > sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+    
+    // Read POST data
+    int received = 0;
+    while (remaining > 0) {
+        ret = httpd_req_recv(req, buf + received, remaining);
+        if (ret <= 0) {
+            if (ret == HTTPD_SOCK_ERR_TIMEOUT) continue;
+            return ESP_FAIL;
+        }
+        received += ret;
+        remaining -= ret;
+    }
+    buf[received] = '\0';
+    
+    ESP_LOGI(TAG, "WiFi config request received");
+    
+    // Parse JSON
+    cJSON *json = cJSON_Parse(buf);
+    if (!json) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+    
+    cJSON *ssid = cJSON_GetObjectItem(json, "ssid");
+    cJSON *password = cJSON_GetObjectItem(json, "password");
+    
+    if (!ssid || !cJSON_IsString(ssid) || strlen(ssid->valuestring) == 0) {
+        cJSON_Delete(json);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing or invalid SSID");
+        return ESP_FAIL;
+    }
+    
+    const char *ssid_str = ssid->valuestring;
+    const char *pass_str = password && cJSON_IsString(password) ? password->valuestring : "";
+    
+    ESP_LOGI(TAG, "WiFi config: SSID=%s", ssid_str);
+    
+    // Call wifi_manager to save config and reboot
+    esp_err_t err = wifi_manager_configure(ssid_str, pass_str);
+    
+    cJSON *response = cJSON_CreateObject();
+    if (err == ESP_OK) {
+        cJSON_AddBoolToObject(response, "success", true);
+        cJSON_AddStringToObject(response, "message", "WiFi configuration saved. Device will restart.");
+        cJSON_AddStringToObject(response, "ssid", ssid_str);
+    } else {
+        cJSON_AddBoolToObject(response, "success", false);
+        cJSON_AddStringToObject(response, "message", "Failed to save WiFi configuration");
+    }
+    
+    cJSON_Delete(json);
+    return send_json_response(req, response);
+}
+
+// GET /api/device/info - Return device info (MAC, name, etc.)
+static esp_err_t device_info_handler(httpd_req_t *req)
+{
+    cJSON *root = cJSON_CreateObject();
+    
+    // Device name
+    cJSON_AddStringToObject(root, "device_name", wifi_manager_get_ap_name());
+    
+    // Get MAC address
+    uint8_t mac[6];
+    esp_wifi_get_mac(WIFI_IF_STA, mac);
+    char mac_str[18];
+    snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    cJSON_AddStringToObject(root, "mac_address", mac_str);
+    
+    // WiFi status
+    wifi_manager_status_t status;
+    if (wifi_manager_get_status(&status) == ESP_OK) {
+        cJSON_AddStringToObject(root, "wifi_state", 
+            status.state == WIFI_STATE_CONNECTED ? "connected" :
+            status.state == WIFI_STATE_AP_MODE ? "ap_mode" :
+            status.state == WIFI_STATE_CONNECTING ? "connecting" : "disconnected");
+        cJSON_AddStringToObject(root, "ip_address", status.ip_address);
+    }
+    
+    // Firmware version
+    cJSON_AddStringToObject(root, "firmware_version", "1.0.0");
+    cJSON_AddStringToObject(root, "platform", "ESP32-S3");
+    
+    return send_json_response(req, root);
 }
 
 // Legacy functions
