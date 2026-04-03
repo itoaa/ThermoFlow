@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.0] - 2026-04-03
+
+### Added - Mini-FTX Extension 🏠
+- **Heat Recovery Component** (`components/heat_recovery/`)
+  - Värmeåtervinningsberäkningar (effektivitet, energibesparing)
+  - Frostskydd med hysteresis (min 60s aktiveringstid)
+  - Fläktstyrning med hysteresis (förhindrar fladder)
+  - Luftflödesbalans-övervakning
+  - Rate limiting för MQTT (max 1 publikation per 5-60s)
+  - Sensorvalidering (NaN, infinity, rimliga värden)
+
+- **MQTT FTX Integration** (`components/mqtt_client/mqtt_ftx.c`)
+  - Publikation till `thermoflow/ftx/*` topics
+  - Rate limiting per topic-typ
+  - Alert-meddelanden (ej rate-limited)
+  - Home Assistant discovery
+
+- **REST API for FTX** (`components/web_server/web_server.c`)
+  - `GET /api/ftx` - Komplett FTX data
+  - `GET /api/ftx/sensors` - Sensorläsningar
+  - `GET /api/ftx/efficiency` - Beräkningar
+  - `GET /api/ftx/status` - Statusflaggor
+  - `POST /api/ftx/control` - Kommandon
+
+- **Web UI Dashboard** (`components/web_server/web/`)
+  - `ftx.html` - FTX-vy med SVG gauge
+  - `ftx-style.css` - Responsiv design
+  - `ftx-script.js` - Live-data via MQTT/REST
+  - Temperaturflödesdiagram (visuellt)
+  - Fläktstyrning med sliders
+  - Energidiagram (7 dagar)
+  - Filterstatus med progress bar
+
+- **Documentation**
+  - `docs/FTX_EXTENSION.md` - Byggguide för Mini-FTX
+  - `docs/MQTT_FTX_API.md` - MQTT API specifikation
+  - Uppdaterad `README.md` med FTX-funktioner
+
+- **Build Scripts**
+  - `build.sh` - Förbättrad med komponentkontroll
+  - `flash.sh` - Med port-detektering och erase-flash
+  - `quick_build.sh` - Snabb inkrementell bygg
+
+### Security Fixes (5 Critical)
+1. **Frost Protection Actions** - Tidigare bara detektion, nu faktiska åtgärder (stoppa/minska fläktar)
+2. **Fan Speed Hysteresis** - Förhindrar fladder vid gränsvärden
+3. **MQTT Rate Limiting** - Max 1 publikation per intervall för att förhindra överbelastning
+4. **Sensor Validation** - Kollar NaN, infinity, rimliga värden innan användning
+5. **Airflow Balance Monitoring** - Detekterar obalans mellan tilluft/frånluft
+
+### Technical
+- Target: ESP32-S3
+- ESP-IDF: v5.1.2
+- Components: 11 (10 original + 1 ny heat_recovery)
+
+---
+
 ## [1.2.0] - 2026-03-22
 
 ### Changed
@@ -69,21 +126,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Security Advisory
 
-### [SEC-2026-03-22-001] Security Framework Complete
-**Severity**: Informational  
-**Description**: IEC 62443 SL-2 security framework fully implemented.  
-**Status**: ✅ Implemented
+### [SEC-2026-04-03-001] Mini-FTX Security Hardening
+**Severity**: Critical (resolved)
+**Description**: 5 security weaknesses identified and fixed in Mini-FTX implementation.
+**Status**: ✅ Fixed in v1.4.0
 
 ### Components
-- SR-001: Input Validation (sensor_manager)
-- SR-002: Authentication (security_utils)
-- SR-003: Secure Communication (mqtt_client, web_server)
-- SR-004: Fail-Safe Defaults (fan_control)
-- SR-005: Audit Logging (audit_log)
-- SR-006: Resource Limits (rate_limiter)
-- SR-009: Actuator Fail-Safe (fan_control)
-- SR-010: Environmental Limits (anti_condensation)
-- SR-011: OTA Security (security_utils)
+- SR-001: Input Validation (sensor_manager) ✅
+- SR-002: Authentication (security_utils) ✅
+- SR-003: Secure Communication (mqtt_client, web_server) ✅
+- SR-004: Fail-Safe Defaults (fan_control) ✅
+- SR-005: Audit Logging (audit_log) ✅
+- SR-006: Resource Limits (rate_limiter) ✅
+- SR-009: Actuator Fail-Safe (fan_control) ✅
+- SR-010: Environmental Limits (anti_condensation) ✅
+- SR-011: OTA Security (security_utils) ✅
 
 ---
 
@@ -92,3 +149,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Project Framework](PROJECT_FRAMEWORK.md)
 - [Implementation Status](docs/IMPLEMENTATION_STATUS.md)
 - [Build Instructions](BUILD.md)
+- [Mini-FTX Extension](docs/FTX_EXTENSION.md)

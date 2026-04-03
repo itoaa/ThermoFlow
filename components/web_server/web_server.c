@@ -16,7 +16,7 @@ static const char *TAG = "WEB_SERVER";
 static httpd_handle_t server = NULL;
 
 // FTX data cache (updated by main loop)
-static ftx_data_t s_ftx_data = {0};
+static heat_recovery_data_t s_ftx_data = {0};
 static bool s_ftx_data_valid = false;
 
 // Forward declarations
@@ -106,10 +106,10 @@ bool web_server_is_running(void)
 }
 
 // Update FTX data from main loop
-void web_server_update_ftx_data(const ftx_data_t *data)
+void web_server_update_ftx_data(const heat_recovery_data_t *data)
 {
     if (data) {
-        memcpy(&s_ftx_data, data, sizeof(ftx_data_t));
+        memcpy(&s_ftx_data, data, sizeof(heat_recovery_data_t));
         s_ftx_data_valid = true;
     }
 }
@@ -150,31 +150,26 @@ static esp_err_t ftx_api_handler(httpd_req_t *req)
         cJSON_AddNumberToObject(sensors, "supply_rh", s_ftx_data.supply_rh);
         cJSON_AddNumberToObject(sensors, "exhaust_temp", s_ftx_data.exhaust_temp);
         cJSON_AddNumberToObject(sensors, "exhaust_rh", s_ftx_data.exhaust_rh);
+        cJSON_AddNumberToObject(sensors, "extract_temp", s_ftx_data.extract_temp);
+        cJSON_AddNumberToObject(sensors, "extract_rh", s_ftx_data.extract_rh);
         cJSON_AddItemToObject(root, "sensors", sensors);
         
         // Efficiency object
         cJSON *eff = cJSON_CreateObject();
-        cJSON_AddNumberToObject(eff, "percent", s_ftx_data.efficiency);
-        cJSON_AddNumberToObject(eff, "airflow", s_ftx_data.airflow);
+        cJSON_AddNumberToObject(eff, "percent", s_ftx_data.efficiency_percent);
+        cJSON_AddNumberToObject(eff, "airflow", s_ftx_data.airflow_supply_m3h);
         cJSON_AddItemToObject(root, "efficiency", eff);
         
-        // Fan speeds
+        // Fans
         cJSON *fans = cJSON_CreateObject();
-        cJSON_AddNumberToObject(fans, "supply", s_ftx_data.fan_speed_supply);
-        cJSON_AddNumberToObject(fans, "exhaust", s_ftx_data.fan_speed_exhaust);
+        cJSON_AddNumberToObject(fans, "supply", s_ftx_data.airflow_supply_m3h); // Using airflow as proxy
+        cJSON_AddNumberToObject(fans, "exhaust", s_ftx_data.airflow_exhaust_m3h);
         cJSON_AddItemToObject(root, "fans", fans);
         
-        // Mode
-        cJSON_AddStringToObject(root, "mode", 
-            s_ftx_data.mode == 0 ? "auto" :
-            s_ftx_data.mode == 1 ? "manual" :
-            s_ftx_data.mode == 2 ? "summer" : "winter");
-        
-        // Status flags
+        // Status
         cJSON *status = cJSON_CreateObject();
-        cJSON_AddBoolToObject(status, "frost_risk", s_ftx_data.frost_risk);
+        cJSON_AddBoolToObject(status, "frost_risk", s_ftx_data.frost_protection_active);
         cJSON_AddBoolToObject(status, "bypass", s_ftx_data.bypass_active);
-        cJSON_AddBoolToObject(status, "filter_warning", s_ftx_data.filter_warning);
         cJSON_AddItemToObject(root, "status", status);
     }
     
@@ -206,20 +201,13 @@ static esp_err_t ftx_efficiency_handler(httpd_req_t *req)
     cJSON *root = cJSON_CreateObject();
     
     if (s_ftx_data_valid) {
-        // Calculate efficiency
-        float efficiency = ftx_calc_efficiency(
-            s_ftx_data.outdoor_temp,
-            s_ftx_data.supply_temp,
-            s_ftx_data.exhaust_temp
-        );
-        
-        // Calculate power
+        // Use stored efficiency
+        float efficiency = s_ftx_data.efficiency_percent;
         float temp_diff = s_ftx_data.exhaust_temp - s_ftx_data.outdoor_temp;
-        float power = ftx_calc_power(s_ftx_data.airflow, temp_diff);
         
         cJSON_AddNumberToObject(root, "efficiency_percent", efficiency);
-        cJSON_AddNumberToObject(root, "power_recovered_w", power);
-        cJSON_AddNumberToObject(root, "airflow_m3h", s_ftx_data.airflow);
+        cJSON_AddNumberToObject(root, "power_recovered_w", s_ftx_data.energy_recovery_w);
+        cJSON_AddNumberToObject(root, "airflow_m3h", s_ftx_data.airflow_supply_m3h);
         cJSON_AddNumberToObject(root, "temp_diff_in_out", temp_diff);
     }
     
@@ -232,12 +220,11 @@ static esp_err_t ftx_status_handler(httpd_req_t *req)
     cJSON *root = cJSON_CreateObject();
     
     if (s_ftx_data_valid) {
-        cJSON_AddBoolToObject(root, "frost_risk", s_ftx_data.frost_risk);
-        cJSON_AddBoolToObject(root, "frost_protection_active", s_ftx_data.frost_protection_active);
+        cJSON_AddBoolToObject(root, "frost_risk", s_ftx_data.frost_protection_active);
         cJSON_AddBoolToObject(root, "bypass_active", s_ftx_data.bypass_active);
-        cJSON_AddBoolToObject(root, "filter_warning", s_ftx_data.filter_warning);
-        cJSON_AddBoolToObject(root, "high_humidity", s_ftx_data.high_humidity);
-        cJSON_AddNumberToObject(root, "filter_hours_remaining", s_ftx_data.filter_hours_remaining);
+        cJSON_AddBoolToObject(root, "filter_warning", 
+            (s_ftx_data.status == FTX_STATUS_FILTER_WARNING || 
+             s_ftx_data.status == FTX_STATUS_FILTER_CRITICAL));
     }
     
     return send_json_response(req, root);
@@ -289,7 +276,6 @@ static esp_err_t ftx_control_handler(httpd_req_t *req)
     ESP_LOGI(TAG, "FTX Control command: %s, value: %d", cmd_str, val);
     
     // Process command (would trigger callbacks to main application)
-    // For now, just acknowledge
     cJSON *response = cJSON_CreateObject();
     cJSON_AddStringToObject(response, "status", "ok");
     cJSON_AddStringToObject(response, "command", cmd_str);
