@@ -13,6 +13,11 @@
             <span class="status" id="system-status">Connecting...</span>
         </header>
 
+        <nav class="nav-tabs">
+            <a href="index.html" class="nav-tab active">Overview</a>
+            <a href="ftx.html" class="nav-tab">Mini-FTX 🏠</a>
+        </nav>
+
         <main>
             <section class="card" id="sensors">
                 <h2>Sensors</h2>
@@ -28,6 +33,18 @@
                 </div>
             </section>
 
+            <!-- Mini-FTX Promo Card -->
+            <section class="card ftx-promo">
+                <h2>🏠 Mini-FTX Available</h2>
+                <p>This device supports Mini-FTX (Frånluftsventilation med värmeåtervinning) mode.</p>
+                <div class="ftx-features">
+                    <span class="feature">⚡ Heat recovery monitoring</span>
+                    <span class="feature">🌡️ 4-sensor temperature flow</span>
+                    <span class="feature">💰 Energy savings tracking</span>
+                </div>
+                <a href="ftx.html" class="btn-primary">Open Mini-FTX Dashboard →</a>
+            </section>
+
             <section class="card" id="network">
                 <h2>Network</h2>
                 <div class="network-status" id="network-status">
@@ -39,7 +56,7 @@
         </main>
 
         <footer>
-            <p>ThermoFlow v1.0.0</p>
+            <p>ThermoFlow v1.1.0 | <a href="ftx.html">Mini-FTX</a></p>
         </footer>
     </div>
 

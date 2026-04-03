@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ThermoFlow - Mini-FTX</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="ftx-style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏠 Mini-FTX</h1>
+            <span class="status" id="system-status">Ansluter...</span>
+        </header>
+
+        <nav class="nav-tabs">
+            <a href="index.html" class="nav-tab">Översikt</a>
+            <a href="ftx.html" class="nav-tab active">FTX</a>
+            <a href="#settings" class="nav-tab">Inställningar</a>
+        </nav>
+
+        <main>
+            <!-- Efficiency Gauge -->
+            <section class="card ftx-efficiency">
+                <h2>⚡ Värmeåtervinning</h2>
+                <div class="efficiency-display">
+                    <div class="gauge-container">
+                        <svg class="gauge" viewBox="0 0 200 120">
+                            <path class="gauge-bg" d="M 20 100 A 80 80 0 0 1 180 100"/>
+                            <path class="gauge-fill" id="efficiency-gauge" d="M 20 100 A 80 80 0 0 1 20 100"/>
+                            <text class="gauge-value" x="100" y="85" id="efficiency-percent">--</text>
+                            <text class="gauge-unit" x="100" y="105">%</text>
+                        </svg>
+                    </div>
+                    <div class="efficiency-stats">
+                        <div class="stat">
+                            <span class="stat-value" id="power-recovered">--</span>
+                            <span class="stat-label">Återvunnen effekt (W)</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-value" id="daily-saving">--</span>
+                            <span class="stat-label">Dagens besparing (kWh)</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-value" id="cost-saving">--</span>
+                            <span class="stat-label">Kostnadsbesparing (kr)</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Temperature Flow -->
+            <section class="card ftx-flow">
+                <h2>🌡️ Temperaturflöde</h2>
+                <div class="flow-diagram">
+                    <div class="flow-row outside">
+                        <div class="flow-label">Utomhus</div>
+                        <div class="flow-arrow down">⬇</div>
+                    </div>
+                    
+                    <div class="flow-row">
+                        <div class="temp-box" id="outdoor-temp">
+                            <span class="temp-value">--</span>
+                            <span class="temp-label">Ute</span>
+                            <span class="rh-value">--%</span>
+                        </div>
+                        <div class="flow-arrow right">➡</div>
+                        <div class="heat-exchanger">
+                            <div class="hx-core">Värmeväxlare</div>
+                            <div class="efficiency-badge" id="hx-efficiency">--%</div>
+                        </div>
+                        <div class="flow-arrow right">➡</div>
+                        <div class="temp-box heated" id="supply-temp">
+                            <span class="temp-value">--</span>
+                            <span class="temp-label">Tilluft</span>
+                            <span class="rh-value">--%</span>
+                        </div>
+                    </div>
+
+                    <div class="flow-row center">
+                        <div class="flow-arrow up">⬆</div>
+                        <div class="airflow-display">
+                            <span id="airflow-rate">--</span> m³/h
+                        </div>
+                        <div class="flow-arrow down">⬇</div>
+                    </div>
+
+                    <div class="flow-row">
+                        <div class="temp-box" id="exhaust-temp">
+                            <span class="temp-value">--</span>
+                            <span class="temp-label">Avluft</span>
+                            <span class="rh-value">--%</span>
+                        </div>
+                        <div class="flow-arrow left">⬅</div>
+                        <div class="heat-exchanger">
+                            <div class="hx-core">Värmeväxlare</div>
+                        </div>
+                        <div class="flow-arrow left">⬅</div>
+                        <div class="temp-box" id="extract-temp">
+                            <span class="temp-value">--</span>
+                            <span class="temp-label">Frånluft</span>
+                            <span class="rh-value">--%</span>
+                        </div>
+                    </div>
+
+                    <div class="flow-row inside">
+                        <div class="flow-arrow up">⬆</div>
+                        <div class="flow-label">Inomhus</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Fan Control -->
+            <section class="card ftx-fans">
+                <h2>🌀 Fläktstyrning</h2>
+                <div class="fan-control-panel">
+                    <div class="mode-selector">
+                        <button class="mode-btn" data-mode="auto" id="mode-auto">Auto</button>
+                        <button class="mode-btn" data-mode="manual" id="mode-manual">Manuell</button>
+                        <button class="mode-btn" data-mode="summer" id="mode-summer">Sommar</button>
+                        <button class="mode-btn" data-mode="winter" id="mode-winter">Vinter</button>
+                    </div>
+                    
+                    <div class="fan-sliders">
+                        <div class="fan-slider-item">
+                            <label>Tilluftsfläkt</label>
+                            <input type="range" class="fan-slider" id="fan-supply" min="20" max="100" value="50">
+                            <span class="fan-percent" id="fan-supply-val">50%</span>
+                        </div>
+                        <div class="fan-slider-item">
+                            <label>Frånluftsfläkt</label>
+                            <input type="range" class="fan-slider" id="fan-exhaust" min="20" max="100" value="50">
+                            <span class="fan-percent" id="fan-exhaust-val">50%</span>
+                        </div>
+                    </div>
+
+                    <div class="fan-sync">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="fan-sync" checked>
+                            Synkronisera fläktar
+                        </label>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Status & Alerts -->
+            <section class="card ftx-status">
+                <h2>📊 Status</h2>
+                <div class="status-grid">
+                    <div class="status-item" id="status-frost">
+                        <span class="status-icon">❄️</span>
+                        <span class="status-text">Frostskydd</span>
+                        <span class="status-state inactive">Av</span>
+                    </div>
+                    <div class="status-item" id="status-bypass">
+                        <span class="status-icon">🌞</span>
+                        <span class="status-text">Bypass</span>
+                        <span class="status-state inactive">Av</span>
+                    </div>
+                    <div class="status-item" id="status-filter">
+                        <span class="status-icon">🗑️</span>
+                        <span class="status-text">Filter</span>
+                        <span class="status-state ok">OK</span>
+                    </div>
+                    <div class="status-item" id="status-humidity">
+                        <span class="status-icon">💧</span>
+                        <span class="status-text">Hög fukt</span>
+                        <span class="status-state inactive">Nej</span>
+                    </div>
+                </div>
+
+                <div class="filter-info">
+                    <div class="filter-progress">
+                        <label>Filterstatus</label>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="filter-progress" style="width: 45%"></div>
+                        </div>
+                        <span class="filter-hours" id="filter-remaining">2160h kvar</span>
+                    </div>
+                    <button class="btn-reset" id="btn-reset-filter">🔄 Nollställ filter</button>
+                </div>
+            </section>
+
+            <!-- Energy Chart -->
+            <section class="card ftx-chart">
+                <h2>📈 Energibesparing (7 dagar)</h2>
+                <div class="chart-container">
+                    <canvas id="energy-chart" width="700" height="250"></canvas>
+                </div>
+                <div class="chart-legend">
+                    <span class="legend-item"><span class="legend-color" style="background: #4ecdc4"></span> Återvunnen energi (kWh)</span>
+                    <span class="legend-item"><span class="legend-color" style="background: #e94560"></span> Kostnadsbesparing (kr)</span>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>ThermoFlow Mini-FTX v1.1.0 | <a href="index.html">Översikt</a></p>
+        </footer>
+    </div>
+
+    <!-- MQTT Library via CDN (fallback to local if needed) -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.esm.js" type="module"></script>
+    <script>
+        // Fallback: define mqtt globally if CDN fails
+        if (typeof mqtt === 'undefined') {
+            console.warn('MQTT library not loaded from CDN, using HTTP fallback only');
+            window.MQTT_CONFIG = { useMqtt: false };
+        }
+    </script>
+    <script src="ftx-script.js"></script>
+</body>
+</html>
