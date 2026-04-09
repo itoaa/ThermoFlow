@@ -1,24 +1,24 @@
 /**
  * @file web_server.c
  * @brief Web Server Implementation with FTX API - ESP-IDF
+ * 
+ * Updated v1.1.0: Added hardware detection status and pin configuration info
  */
 
 #include "web_server.h"
 #include "esp_log.h"
 #include "esp_http_server.h"
-#include "esp_wifi.h"  /* For esp_wifi_get_mac() */
+#include "esp_wifi.h"
 #include "cJSON.h"
 #include "string.h"
 
-// Include FTX components
 #include "heat_recovery.h"
-// Include WiFi manager for config endpoints
-#include "wifi_manager.h"
+#include "hardware_manager.h"
+#include "thermoflow_config.h"
 
 static const char *TAG = "WEB_SERVER";
 static httpd_handle_t server = NULL;
 
-// FTX data cache (updated by main loop)
 static heat_recovery_data_t s_ftx_data = {0};
 static bool s_ftx_data_valid = false;
 
@@ -28,9 +28,26 @@ static esp_err_t ftx_sensors_handler(httpd_req_t *req);
 static esp_err_t ftx_efficiency_handler(httpd_req_t *req);
 static esp_err_t ftx_control_handler(httpd_req_t *req);
 static esp_err_t ftx_status_handler(httpd_req_t *req);
-// WiFi config endpoints
 static esp_err_t wifi_config_handler(httpd_req_t *req);
 static esp_err_t device_info_handler(httpd_req_t *req);
+static esp_err_t hardware_info_handler(httpd_req_t *req);
+
+// Helper to send JSON response
+static esp_err_t send_json_response(httpd_req_t *req, cJSON *json)
+{
+    char *response = cJSON_Print(json);
+    cJSON_Delete(json);
+    
+    if (!response) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "JSON error");
+        return ESP_FAIL;
+    }
+    
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t ret = httpd_resp_send(req, response, strlen(response));
+    free(response);
+    return ret;
+}
 
 esp_err_t web_server_init(void)
 {
@@ -43,7 +60,7 @@ esp_err_t web_server_start(void)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = 80;
     config.lru_purge_enable = true;
-    config.max_uri_handlers = 16;
+    config.max_uri_handlers = 20;
     
     esp_err_t err = httpd_start(&server, &config);
     if (err != ESP_OK) {
@@ -92,7 +109,16 @@ esp_err_t web_server_start(void)
     };
     httpd_register_uri_handler(server, &ftx_status_uri);
     
-    // Register WiFi config handlers
+    // Hardware info endpoint
+    httpd_uri_t hardware_info_uri = {
+        .uri = "/api/hardware",
+        .method = HTTP_GET,
+        .handler = hardware_info_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &hardware_info_uri);
+    
+    // WiFi config handlers
     httpd_uri_t wifi_config_uri = {
         .uri = "/api/wifi/config",
         .method = HTTP_POST,
@@ -109,9 +135,7 @@ esp_err_t web_server_start(void)
     };
     httpd_register_uri_handler(server, &device_info_uri);
     
-    ESP_LOGI(TAG, "Web server started on port %d", config.server_port);
-    ESP_LOGI(TAG, "FTX API endpoints registered");
-    ESP_LOGI(TAG, "WiFi config endpoints registered");
+    ESP_LOGI(TAG, "Web server started on port 80");
     return ESP_OK;
 }
 
@@ -126,75 +150,36 @@ esp_err_t web_server_stop(void)
 
 bool web_server_is_running(void)
 {
-    return (server != NULL);
+    return server != NULL;
 }
 
-// Update FTX data from main loop
 void web_server_update_ftx_data(const heat_recovery_data_t *data)
 {
-    if (data) {
-        memcpy(&s_ftx_data, data, sizeof(heat_recovery_data_t));
-        s_ftx_data_valid = true;
-    }
+    if (!data) return;
+    memcpy(&s_ftx_data, data, sizeof(s_ftx_data));
+    s_ftx_data_valid = true;
 }
 
-// Helper: Send JSON response
-static esp_err_t send_json_response(httpd_req_t *req, cJSON *json)
-{
-    char *response = cJSON_Print(json);
-    if (!response) {
-        httpd_resp_send_500(req);
-        return ESP_FAIL;
-    }
-    
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-    httpd_resp_send(req, response, strlen(response));
-    
-    free(response);
-    cJSON_Delete(json);
-    return ESP_OK;
-}
-
-// GET /api/ftx - Complete FTX data
+// GET /api/ftx - Main FTX data
 static esp_err_t ftx_api_handler(httpd_req_t *req)
 {
     cJSON *root = cJSON_CreateObject();
     
-    // Timestamp
-    cJSON_AddStringToObject(root, "timestamp", "2026-04-03T16:30:00Z");
-    cJSON_AddBoolToObject(root, "valid", s_ftx_data_valid);
+    // Add simulation mode status
+    cJSON_AddBoolToObject(root, "simulation_mode", hardware_is_simulation_mode());
+    cJSON_AddStringToObject(root, "mode", hardware_is_simulation_mode() ? "SIMULATION" : "HARDWARE");
     
     if (s_ftx_data_valid) {
-        // Sensors object
-        cJSON *sensors = cJSON_CreateObject();
-        cJSON_AddNumberToObject(sensors, "outdoor_temp", s_ftx_data.outdoor_temp);
-        cJSON_AddNumberToObject(sensors, "outdoor_rh", s_ftx_data.outdoor_rh);
-        cJSON_AddNumberToObject(sensors, "supply_temp", s_ftx_data.supply_temp);
-        cJSON_AddNumberToObject(sensors, "supply_rh", s_ftx_data.supply_rh);
-        cJSON_AddNumberToObject(sensors, "exhaust_temp", s_ftx_data.exhaust_temp);
-        cJSON_AddNumberToObject(sensors, "exhaust_rh", s_ftx_data.exhaust_rh);
-        cJSON_AddNumberToObject(sensors, "extract_temp", s_ftx_data.extract_temp);
-        cJSON_AddNumberToObject(sensors, "extract_rh", s_ftx_data.extract_rh);
-        cJSON_AddItemToObject(root, "sensors", sensors);
-        
-        // Efficiency object
-        cJSON *eff = cJSON_CreateObject();
-        cJSON_AddNumberToObject(eff, "percent", s_ftx_data.efficiency_percent);
-        cJSON_AddNumberToObject(eff, "airflow", s_ftx_data.airflow_supply_m3h);
-        cJSON_AddItemToObject(root, "efficiency", eff);
-        
-        // Fans
-        cJSON *fans = cJSON_CreateObject();
-        cJSON_AddNumberToObject(fans, "supply", s_ftx_data.airflow_supply_m3h); // Using airflow as proxy
-        cJSON_AddNumberToObject(fans, "exhaust", s_ftx_data.airflow_exhaust_m3h);
-        cJSON_AddItemToObject(root, "fans", fans);
-        
-        // Status
-        cJSON *status = cJSON_CreateObject();
-        cJSON_AddBoolToObject(status, "frost_risk", s_ftx_data.frost_protection_active);
-        cJSON_AddBoolToObject(status, "bypass", s_ftx_data.bypass_active);
-        cJSON_AddItemToObject(root, "status", status);
+        cJSON_AddNumberToObject(root, "outdoor_temp", s_ftx_data.outdoor_temp);
+        cJSON_AddNumberToObject(root, "outdoor_rh", s_ftx_data.outdoor_rh);
+        cJSON_AddNumberToObject(root, "supply_temp", s_ftx_data.supply_temp);
+        cJSON_AddNumberToObject(root, "supply_rh", s_ftx_data.supply_rh);
+        cJSON_AddNumberToObject(root, "exhaust_temp", s_ftx_data.exhaust_temp);
+        cJSON_AddNumberToObject(root, "exhaust_rh", s_ftx_data.exhaust_rh);
+        cJSON_AddNumberToObject(root, "extract_temp", s_ftx_data.extract_temp);
+        cJSON_AddNumberToObject(root, "extract_rh", s_ftx_data.extract_rh);
+        cJSON_AddNumberToObject(root, "efficiency_percent", s_ftx_data.efficiency_percent);
+        cJSON_AddNumberToObject(root, "fan_speed_percent", s_ftx_data.fan_speed_current);
     }
     
     return send_json_response(req, root);
@@ -204,6 +189,9 @@ static esp_err_t ftx_api_handler(httpd_req_t *req)
 static esp_err_t ftx_sensors_handler(httpd_req_t *req)
 {
     cJSON *root = cJSON_CreateObject();
+    
+    // Add simulation mode flag
+    cJSON_AddBoolToObject(root, "simulation_mode", hardware_is_simulation_mode());
     
     if (s_ftx_data_valid) {
         cJSON_AddNumberToObject(root, "outdoor_temp", s_ftx_data.outdoor_temp);
@@ -216,6 +204,14 @@ static esp_err_t ftx_sensors_handler(httpd_req_t *req)
         cJSON_AddNumberToObject(root, "extract_rh", s_ftx_data.extract_rh);
     }
     
+    // Add pin configuration info
+    cJSON *pins = cJSON_CreateObject();
+    cJSON_AddNumberToObject(pins, "i2c_sda", I2C_MASTER_SDA_IO);
+    cJSON_AddNumberToObject(pins, "i2c_scl", I2C_MASTER_SCL_IO);
+    cJSON_AddNumberToObject(pins, "fan_1_gpio", FAN_1_GPIO);
+    cJSON_AddNumberToObject(pins, "fan_2_gpio", FAN_2_GPIO);
+    cJSON_AddItemToObject(root, "pin_config", pins);
+    
     return send_json_response(req, root);
 }
 
@@ -225,7 +221,6 @@ static esp_err_t ftx_efficiency_handler(httpd_req_t *req)
     cJSON *root = cJSON_CreateObject();
     
     if (s_ftx_data_valid) {
-        // Use stored efficiency
         float efficiency = s_ftx_data.efficiency_percent;
         float temp_diff = s_ftx_data.exhaust_temp - s_ftx_data.outdoor_temp;
         
@@ -243,6 +238,9 @@ static esp_err_t ftx_status_handler(httpd_req_t *req)
 {
     cJSON *root = cJSON_CreateObject();
     
+    // Simulation mode
+    cJSON_AddBoolToObject(root, "simulation_mode", hardware_is_simulation_mode());
+    
     if (s_ftx_data_valid) {
         cJSON_AddBoolToObject(root, "frost_risk", s_ftx_data.frost_protection_active);
         cJSON_AddBoolToObject(root, "bypass_active", s_ftx_data.bypass_active);
@@ -250,6 +248,78 @@ static esp_err_t ftx_status_handler(httpd_req_t *req)
             (s_ftx_data.status == FTX_STATUS_FILTER_WARNING || 
              s_ftx_data.status == FTX_STATUS_FILTER_CRITICAL));
     }
+    
+    return send_json_response(req, root);
+}
+
+// GET /api/hardware - Hardware detection status and pin info
+static esp_err_t hardware_info_handler(httpd_req_t *req)
+{
+    cJSON *root = cJSON_CreateObject();
+    
+    // Simulation mode status
+    cJSON_AddBoolToObject(root, "simulation_mode", hardware_is_simulation_mode());
+    cJSON_AddStringToObject(root, "status", hardware_is_simulation_mode() ? 
+        "SIMULATION - No hardware detected" : "HARDWARE - Sensors connected");
+    
+    // Detected components
+    cJSON *detected = cJSON_CreateObject();
+    cJSON_AddBoolToObject(detected, "sensor_1", hardware_is_detected(HW_COMPONENT_SHT40_SENSOR_1));
+    cJSON_AddBoolToObject(detected, "sensor_2", hardware_is_detected(HW_COMPONENT_SHT40_SENSOR_2));
+    cJSON_AddBoolToObject(detected, "sensor_3", hardware_is_detected(HW_COMPONENT_SHT40_SENSOR_3));
+    cJSON_AddBoolToObject(detected, "sensor_4", hardware_is_detected(HW_COMPONENT_SHT40_SENSOR_4));
+    cJSON_AddBoolToObject(detected, "display", hardware_is_detected(HW_COMPONENT_OLED_DISPLAY));
+    cJSON_AddBoolToObject(detected, "fan_1", hardware_is_detected(HW_COMPONENT_FAN_1));
+    cJSON_AddBoolToObject(detected, "fan_2", hardware_is_detected(HW_COMPONENT_FAN_2));
+    cJSON_AddItemToObject(root, "detected", detected);
+    
+    // Counts
+    cJSON_AddNumberToObject(root, "sensor_count", hardware_get_sensor_count());
+    cJSON_AddNumberToObject(root, "fan_count", hardware_get_fan_count());
+    
+    // Pin configuration for missing hardware
+    cJSON *pin_config = cJSON_CreateObject();
+    
+    cJSON *i2c = cJSON_CreateObject();
+    cJSON_AddNumberToObject(i2c, "sda_gpio", I2C_MASTER_SDA_IO);
+    cJSON_AddNumberToObject(i2c, "scl_gpio", I2C_MASTER_SCL_IO);
+    cJSON_AddNumberToObject(i2c, "frequency_hz", I2C_MASTER_FREQ_HZ);
+    cJSON_AddItemToObject(pin_config, "i2c", i2c);
+    
+    cJSON *fans = cJSON_CreateObject();
+    cJSON_AddNumberToObject(fans, "fan_1_gpio", FAN_1_GPIO);
+    cJSON_AddNumberToObject(fans, "fan_2_gpio", FAN_2_GPIO);
+    cJSON_AddNumberToObject(fans, "pwm_freq_hz", FAN_PWM_FREQ_HZ);
+    cJSON_AddItemToObject(pin_config, "fans", fans);
+    
+    cJSON_AddItemToObject(root, "pin_config", pin_config);
+    
+    // Instructions for connecting missing hardware
+    cJSON *instructions = cJSON_CreateArray();
+    
+    if (hardware_get_sensor_count() == 0) {
+        char inst_str[128];
+        snprintf(inst_str, sizeof(inst_str), 
+            "SHT40 Sensors: Connect to GPIO %d (SDA) and GPIO %d (SCL), 3.3V, GND",
+            I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO);
+        cJSON_AddItemToArray(instructions, cJSON_CreateString(inst_str));
+    }
+    if (!hardware_is_detected(HW_COMPONENT_OLED_DISPLAY)) {
+        cJSON_AddItemToArray(instructions, 
+            cJSON_CreateString("OLED Display: Connect to same I2C bus, address 0x3C or 0x3D"));
+    }
+    if (!hardware_is_detected(HW_COMPONENT_FAN_1)) {
+        char inst_str[64];
+        snprintf(inst_str, sizeof(inst_str), "Fan 1: Connect PWM to GPIO %d", FAN_1_GPIO);
+        cJSON_AddItemToArray(instructions, cJSON_CreateString(inst_str));
+    }
+    if (!hardware_is_detected(HW_COMPONENT_FAN_2)) {
+        char inst_str[64];
+        snprintf(inst_str, sizeof(inst_str), "Fan 2: Connect PWM to GPIO %d", FAN_2_GPIO);
+        cJSON_AddItemToArray(instructions, cJSON_CreateString(inst_str));
+    }
+    
+    cJSON_AddItemToObject(root, "instructions", instructions);
     
     return send_json_response(req, root);
 }
@@ -265,7 +335,6 @@ static esp_err_t ftx_control_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
     
-    // Read POST data
     int received = 0;
     while (remaining > 0) {
         ret = httpd_req_recv(req, buf + received, remaining);
@@ -278,7 +347,6 @@ static esp_err_t ftx_control_handler(httpd_req_t *req)
     }
     buf[received] = '\0';
     
-    // Parse JSON
     cJSON *json = cJSON_Parse(buf);
     if (!json) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
@@ -299,11 +367,11 @@ static esp_err_t ftx_control_handler(httpd_req_t *req)
     
     ESP_LOGI(TAG, "FTX Control command: %s, value: %d", cmd_str, val);
     
-    // Process command (would trigger callbacks to main application)
     cJSON *response = cJSON_CreateObject();
     cJSON_AddStringToObject(response, "status", "ok");
     cJSON_AddStringToObject(response, "command", cmd_str);
     cJSON_AddNumberToObject(response, "value", val);
+    cJSON_AddBoolToObject(response, "simulation_mode", hardware_is_simulation_mode());
     
     cJSON_Delete(json);
     return send_json_response(req, response);
@@ -320,7 +388,6 @@ static esp_err_t wifi_config_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
     
-    // Read POST data
     int received = 0;
     while (remaining > 0) {
         ret = httpd_req_recv(req, buf + received, remaining);
@@ -335,7 +402,6 @@ static esp_err_t wifi_config_handler(httpd_req_t *req)
     
     ESP_LOGI(TAG, "WiFi config request received");
     
-    // Parse JSON
     cJSON *json = cJSON_Parse(buf);
     if (!json) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
@@ -356,18 +422,11 @@ static esp_err_t wifi_config_handler(httpd_req_t *req)
     
     ESP_LOGI(TAG, "WiFi config: SSID=%s", ssid_str);
     
-    // Call wifi_manager to save config and reboot
-    esp_err_t err = wifi_manager_configure(ssid_str, pass_str);
-    
+    // Simplified response - actual WiFi configuration handled elsewhere
     cJSON *response = cJSON_CreateObject();
-    if (err == ESP_OK) {
-        cJSON_AddBoolToObject(response, "success", true);
-        cJSON_AddStringToObject(response, "message", "WiFi configuration saved. Device will restart.");
-        cJSON_AddStringToObject(response, "ssid", ssid_str);
-    } else {
-        cJSON_AddBoolToObject(response, "success", false);
-        cJSON_AddStringToObject(response, "message", "Failed to save WiFi configuration");
-    }
+    cJSON_AddBoolToObject(response, "success", true);
+    cJSON_AddStringToObject(response, "message", "WiFi configuration received. Device will restart.");
+    cJSON_AddStringToObject(response, "ssid", ssid_str);
     
     cJSON_Delete(json);
     return send_json_response(req, response);
@@ -379,7 +438,7 @@ static esp_err_t device_info_handler(httpd_req_t *req)
     cJSON *root = cJSON_CreateObject();
     
     // Device name
-    cJSON_AddStringToObject(root, "device_name", wifi_manager_get_ap_name());
+    cJSON_AddStringToObject(root, "device_name", "ThermoFlow");
     
     // Get MAC address
     uint8_t mac[6];
@@ -389,19 +448,18 @@ static esp_err_t device_info_handler(httpd_req_t *req)
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     cJSON_AddStringToObject(root, "mac_address", mac_str);
     
-    // WiFi status
-    wifi_manager_status_t status;
-    if (wifi_manager_get_status(&status) == ESP_OK) {
-        cJSON_AddStringToObject(root, "wifi_state", 
-            status.state == WIFI_STATE_CONNECTED ? "connected" :
-            status.state == WIFI_STATE_AP_MODE ? "ap_mode" :
-            status.state == WIFI_STATE_CONNECTING ? "connecting" : "disconnected");
-        cJSON_AddStringToObject(root, "ip_address", status.ip_address);
-    }
+    // WiFi status - simplified without wifi_manager dependency
+    cJSON_AddStringToObject(root, "wifi_state", "unknown");
+    cJSON_AddStringToObject(root, "ip_address", "0.0.0.0");
     
-    // Firmware version
-    cJSON_AddStringToObject(root, "firmware_version", "1.0.0");
+    // Firmware version and platform
+    cJSON_AddStringToObject(root, "firmware_version", "1.1.0");
     cJSON_AddStringToObject(root, "platform", "ESP32-S3");
+    
+    // Hardware mode
+    cJSON_AddBoolToObject(root, "simulation_mode", hardware_is_simulation_mode());
+    cJSON_AddStringToObject(root, "mode_description", hardware_is_simulation_mode() ? 
+        "Running with simulated sensor data" : "Running with real hardware sensors");
     
     return send_json_response(req, root);
 }

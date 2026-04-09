@@ -5,13 +5,20 @@
  * Main application entry point for the climate monitoring system.
  * Implements IEC 62443 SL-2 security level compliance.
  * 
+ * Supports "bare" ESP32 operation - detects hardware at boot and
+ * gracefully degrades to simulation mode if no sensors connected.
+ * 
  * @author Ola Andersson
- * @version 1.0.0
- * @date 2026-03-22
+ * @version 1.1.0
+ * @date 2026-04-09
  * 
  * @copyright Copyright (c) 2026
  * 
  * @section changelog Change Log
+ * - 1.1.0 (2026-04-09): Added hardware detection and simulation mode
+ *   - Auto-detect SHT40 sensors, display, and fans
+ *   - Runs without hardware for testing/onboarding
+ *   - Shows "SIMULATION MODE" in web interface
  * - 1.0.0 (2026-03-22): Initial release with core functionality
  *   - Fan control with fail-safe
  *   - Anti-condensation protection
@@ -33,11 +40,13 @@
 #include "fan_controller.h"           /* PWM fan control interface */
 #include "anti_condensation.h"          /* RH monitoring and alerts */
 #include "wifi_manager.h"             /* WiFi configuration and AP mode */
+#include "hardware_manager.h"           /* Hardware detection */
+#include "sensor_manager.h"           /* Sensor abstraction layer */
 
 /* Compile-time version string */
-#define THERMOFLOW_VERSION    "1.0.0"
+#define THERMOFLOW_VERSION    "1.1.0"
 #define THERMOFLOW_VERSION_MAJOR  1
-#define THERMOFLOW_VERSION_MINOR  0
+#define THERMOFLOW_VERSION_MINOR  1
 #define THERMOFLOW_VERSION_PATCH  0
 
 /* Logging tag - appears in all log messages from this file */
@@ -50,38 +59,11 @@ static const char *TAG = "THERMOFLOW";
 #define MAIN_LOOP_INTERVAL_MS      5000u     /* 5 seconds between status logs */
 #define CONTROL_LOOP_INTERVAL_MS   1000u     /* 1 second control loop */
 
-/* Sensor simulation constants (placeholder until hardware integration) */
-#define SIM_MIN_TEMP_C      20.0f    /* Minimum simulated temperature */
-#define SIM_MAX_TEMP_C      35.0f    /* Maximum simulated temperature */
-#define SIM_MIN_RH_PERCENT  40.0f    /* Minimum simulated humidity */
-#define SIM_MAX_RH_PERCENT  95.0f    /* Maximum simulated humidity */
-
-/**
- * @brief Simulated sensor readings (placeholder for actual SHT40)
- * 
- * Generates realistic but synthetic temperature and humidity values
- * for testing the control logic before hardware integration.
- * 
- * @param[out] temp_c Temperature in Celsius
- * @param[out] rh_percent Relative humidity percentage
- */
-static void simulate_sensor_readings(float *temp_c, float *rh_percent)
-{
-    /* Get random values from hardware RNG (secure, unpredictable) */
-    uint32_t rand_val = esp_random();
-    
-    /* Scale to temperature range */
-    float temp_norm = (float)(rand_val & 0xFFFF) / 65535.0f;
-    *temp_c = SIM_MIN_TEMP_C + temp_norm * (SIM_MAX_TEMP_C - SIM_MIN_TEMP_C);
-    
-    /* Get another random value for humidity */
-    rand_val = esp_random();
-    float rh_norm = (float)(rand_val & 0xFFFF) / 65535.0f;
-    *rh_percent = SIM_MIN_RH_PERCENT + rh_norm * (SIM_MAX_RH_PERCENT - SIM_MIN_RH_PERCENT);
-}
-
-/* Global mutex for thread-safe sensor data access */
-static SemaphoreHandle_t g_sensor_mutex = NULL;
+/* Sensor simulation constants (used when no hardware detected) */
+#define SIM_MIN_TEMP_C      15.0f    /* Minimum simulated temperature */
+#define SIM_MAX_TEMP_C      25.0f    /* Maximum simulated temperature */
+#define SIM_MIN_RH_PERCENT  30.0f    /* Minimum simulated humidity */
+#define SIM_MAX_RH_PERCENT  90.0f    /* Maximum simulated humidity */
 
 /**
  * @brief Initialize Non-Volatile Storage
@@ -104,10 +86,15 @@ static esp_err_t init_nvs(void)
 }
 
 /**
+ * @brief Global mutex for thread-safe sensor data access
+ */
+static SemaphoreHandle_t g_sensor_mutex = NULL;
+
+/**
  * @brief Main control loop task
  * 
  * Runs continuously to:
- * - Read sensor values (simulated for now)
+ * - Read sensor values (from hardware or simulation)
  * - Check condensation risk
  * - Adjust fan speeds based on conditions
  * - Log status periodically
@@ -126,7 +113,7 @@ static void control_task(void *pvParameters)
     ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
     
     /* Current sensor readings */
-    float temp_c = 25.0f;
+    float temp_c = 20.0f;
     float rh_percent = 50.0f;
     
     /* Control loop */
@@ -134,8 +121,17 @@ static void control_task(void *pvParameters)
         /* Feed watchdog to prevent reset */
         ESP_ERROR_CHECK(esp_task_wdt_reset());
         
-        /* Simulate sensor readings (replace with actual SHT40 driver) */
-        simulate_sensor_readings(&temp_c, &rh_percent);
+        /* Read sensor data (hardware or simulated) */
+        sensor_manager_data_t sensor_data;
+        esp_err_t err = sensor_manager_read_all(&sensor_data);
+        
+        if (err == ESP_OK && sensor_data.num_sensors > 0 && sensor_data.valid[0]) {
+            /* Use first valid sensor data */
+            temp_c = sensor_data.temperature[0];
+            rh_percent = sensor_data.humidity[0];
+        } else {
+            ESP_LOGW(TAG, "Failed to read sensors: %s", esp_err_to_name(err));
+        }
         
         /* Thread-safe sensor data update */
         if (g_sensor_mutex != NULL) {
@@ -146,25 +142,33 @@ static void control_task(void *pvParameters)
         }
         
         /* Check condensation risk (IEC 62443 SR-010) */
-        esp_err_t err = anti_condensation_check(rh_percent, temp_c);
+        err = anti_condensation_check(rh_percent, temp_c);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "Anti-condensation check failed: %s", esp_err_to_name(err));
         }
         
         /* Adjust fan speed based on temperature and condensation risk */
-        if (anti_condensation_is_active()) {
-            /* High condensation risk - maximum ventilation */
-            fan_controller_set_mode(FAN_1, FAN_MODE_MANUAL);
-            fan_controller_set_speed(FAN_1, 100);
-            ESP_LOGW(TAG, "CONDENSATION ALERT: Fans at 100%% (RH=%.1f%%)", rh_percent);
+        /* Only if fans are detected - otherwise just log */
+        if (hardware_is_detected(HW_COMPONENT_FAN_1)) {
+            if (anti_condensation_is_active()) {
+                /* High condensation risk - maximum ventilation */
+                fan_controller_set_mode(FAN_1, FAN_MODE_MANUAL);
+                fan_controller_set_speed(FAN_1, 100);
+                ESP_LOGW(TAG, "CONDENSATION ALERT: Fans at 100%% (RH=%.1f%%)", rh_percent);
+            } else {
+                /* Normal operation - moderate fan speed based on temp */
+                uint8_t fan_speed = (uint8_t)((temp_c - SIM_MIN_TEMP_C) / 
+                                             (SIM_MAX_TEMP_C - SIM_MIN_TEMP_C) * 50);
+                if (fan_speed < 10) fan_speed = 10;  /* Minimum 10% */
+                if (fan_speed > 60) fan_speed = 60; /* Normal max 60% */
+                fan_controller_set_mode(FAN_1, FAN_MODE_MANUAL);
+                fan_controller_set_speed(FAN_1, fan_speed);
+            }
         } else {
-            /* Normal operation - moderate fan speed based on temp */
-            uint8_t fan_speed = (uint8_t)((temp_c - SIM_MIN_TEMP_C) / 
-                                         (SIM_MAX_TEMP_C - SIM_MIN_TEMP_C) * 50);
-            if (fan_speed < 10) fan_speed = 10;  /* Minimum 10% */
-            if (fan_speed > 60) fan_speed = 60; /* Normal max 60% */
-            fan_controller_set_mode(FAN_1, FAN_MODE_MANUAL);
-            fan_controller_set_speed(FAN_1, fan_speed);
+            /* No fans detected - log what we would do */
+            if (anti_condensation_is_active()) {
+                ESP_LOGW(TAG, "CONDENSATION ALERT: Would set fans to 100%% (RH=%.1f%%) [NO FANS]", rh_percent);
+            }
         }
         
         /* Run WiFi manager */
@@ -174,10 +178,17 @@ static void control_task(void *pvParameters)
         static uint32_t last_log_time = 0;
         uint32_t now = xTaskGetTickCount();
         if ((now - last_log_time) * portTICK_PERIOD_MS >= MAIN_LOOP_INTERVAL_MS) {
-            ESP_LOGI(TAG, "Status: Temp=%.1f°C, RH=%.1f%%, Fan=%u%%, CondAlert=%s",
-                     temp_c, rh_percent,
-                     fan_controller_get_speed(FAN_1),
-                     anti_condensation_is_active() ? "YES" : "no");
+            if (hardware_is_simulation_mode()) {
+                ESP_LOGI(TAG, "[SIMULATION] Temp=%.1f°C, RH=%.1f%%, CondAlert=%s",
+                         temp_c, rh_percent,
+                         anti_condensation_is_active() ? "YES" : "no");
+            } else {
+                uint8_t fan_speed = hardware_is_detected(HW_COMPONENT_FAN_1) ? 
+                                    fan_controller_get_speed(FAN_1) : 0;
+                ESP_LOGI(TAG, "[HARDWARE] Temp=%.1f°C, RH=%.1f%%, Fan=%u%%, CondAlert=%s",
+                         temp_c, rh_percent, fan_speed,
+                         anti_condensation_is_active() ? "YES" : "no");
+            }
             last_log_time = now;
         }
         
@@ -190,6 +201,7 @@ static void control_task(void *pvParameters)
  * @brief Application entry point
  * 
  * Initializes all subsystems and starts the control task.
+ * Detects hardware and falls back to simulation if none found.
  * This function never returns - FreeRTOS scheduler takes over.
  */
 void app_main(void)
@@ -221,9 +233,44 @@ void app_main(void)
         return;  /* Cannot continue without mutex */
     }
     
-    /* Step 3: Initialize WiFi manager (AP mode or connect to configured WiFi) */
+    /* Step 3: Initialize Hardware Manager - detects all connected hardware */
+    ESP_LOGI(TAG, "Detecting hardware...");
+    esp_err_t ret = hardware_manager_init();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Hardware manager warning: %s", esp_err_to_name(ret));
+        /* Continue anyway - simulation mode is available */
+    }
+    
+    /* Log detection results */
+    const char *hw_summary = hardware_get_summary();
+    ESP_LOGI(TAG, "Hardware: %s", hw_summary);
+    
+    if (hardware_is_simulation_mode()) {
+        ESP_LOGW(TAG, "========================================");
+        ESP_LOGW(TAG, "  RUNNING IN SIMULATION MODE");
+        ESP_LOGW(TAG, "  No physical hardware detected!");
+        ESP_LOGW(TAG, "  Web interface available for testing.");
+        ESP_LOGW(TAG, "  Connect sensors and reboot for real mode.");
+        ESP_LOGW(TAG, "========================================");
+    }
+    
+    /* Step 4: Initialize Sensor Manager */
+    ESP_LOGI(TAG, "Initializing sensor manager...");
+    ret = sensor_manager_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Sensor manager init failed: %s", esp_err_to_name(ret));
+        /* Continue - system can work in limited mode */
+    } else {
+        if (sensor_manager_is_simulation_mode()) {
+            ESP_LOGI(TAG, "Sensor manager: SIMULATION MODE");
+        } else {
+            ESP_LOGI(TAG, "Sensor manager: HARDWARE MODE");
+        }
+    }
+    
+    /* Step 5: Initialize WiFi manager (AP mode or connect to configured WiFi) */
     ESP_LOGI(TAG, "Initializing WiFi manager...");
-    esp_err_t ret = wifi_manager_init();
+    ret = wifi_manager_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "WiFi manager init failed: %s", esp_err_to_name(ret));
         /* Continue - system can work without WiFi */
@@ -234,17 +281,22 @@ void app_main(void)
                  wifi_manager_is_connected() ? "Connected to WiFi" : "Connecting...");
     }
     
-    /* Step 4: Initialize fan controller (IEC 62443 SR-009 - fail-safe) */
-    ESP_LOGI(TAG, "Initializing fan controller...");
-    ret = fan_controller_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Fan controller init failed: %s", esp_err_to_name(ret));
-        /* Continue - fans not critical for basic operation */
+    /* Step 6: Initialize fan controller (IEC 62443 SR-009 - fail-safe) */
+    /* Only if fans are actually detected */
+    if (hardware_is_detected(HW_COMPONENT_FAN_1)) {
+        ESP_LOGI(TAG, "Initializing fan controller...");
+        ret = fan_controller_init();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Fan controller init failed: %s", esp_err_to_name(ret));
+            /* Continue - fans not critical for basic operation */
+        } else {
+            ESP_LOGI(TAG, "Fan controller initialized");
+        }
     } else {
-        ESP_LOGI(TAG, "Fan controller initialized");
+        ESP_LOGW(TAG, "No fans detected - skipping fan controller");
     }
     
-    /* Step 5: Initialize anti-condensation protection (IEC 62443 SR-010) */
+    /* Step 7: Initialize anti-condensation protection (IEC 62443 SR-010) */
     ESP_LOGI(TAG, "Initializing anti-condensation...");
     ret = anti_condensation_init();
     if (ret != ESP_OK) {
@@ -254,7 +306,7 @@ void app_main(void)
         ESP_LOGI(TAG, "Anti-condensation protection active");
     }
     
-    /* Step 6: Create control task (main application logic) */
+    /* Step 8: Create control task (main application logic) */
     ESP_LOGI(TAG, "Creating control task...");
     BaseType_t task_created = xTaskCreatePinnedToCore(
         control_task,              /* Task function */
@@ -281,6 +333,11 @@ void app_main(void)
     while (1) {
         /* Optional: Monitor system health, handle events, etc. */
         vTaskDelay(pdMS_TO_TICKS(10000));  /* 10 second heartbeat */
-        ESP_LOGI(TAG, "Main task heartbeat - heap: %lu bytes", esp_get_free_heap_size());
+        
+        if (hardware_is_simulation_mode()) {
+            ESP_LOGI(TAG, "[SIMULATION MODE] Heartbeat - heap: %lu bytes", esp_get_free_heap_size());
+        } else {
+            ESP_LOGI(TAG, "Heartbeat - heap: %lu bytes", esp_get_free_heap_size());
+        }
     }
 }

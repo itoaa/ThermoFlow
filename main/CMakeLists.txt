@@ -1,4 +1,5 @@
-# ThermoFlow Main Application
+# ThermoFlow Main Application - v1.1.0
+# Added hardware_manager for auto-detection
 
 idf_component_register(
     SRCS "main.c"
@@ -21,4 +22,5 @@ idf_component_register(
         rate_limiter
         audit_log
         wifi_manager
+        hardware_manager
 )

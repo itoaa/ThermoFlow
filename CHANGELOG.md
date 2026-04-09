@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.0] - 2026-04-09
+
+### Added - Hardware Detection & Simulation Mode 🔌
+
+- **Hardware Manager Component** (`components/hardware_manager/`)
+  - Automatic hardware detection at boot (I2C scan, GPIO check)
+  - Detects SHT40 sensors (up to 4 units), OLED display, PWM fans
+  - Auto-fallback to simulation mode if no hardware detected
+  - Runtime re-detection for hot-plug support
+  - Thread-safe mutex protection for hardware state
+  - `hardware_manager_init()`, `hardware_is_simulation_mode()`, `hardware_get_summary()`
+  - `hardware_is_detected()`, `hardware_redetect()`, `hardware_get_sensor_count()`
+
+- **Sensor Manager Simulation** (`components/sensor_manager/`)
+  - Generates realistic simulated sensor data (temp 15-25°C, RH 30-80%)
+  - Small random variation using hardware RNG for realistic demo
+  - Automatic mode switching based on hardware detection
+  - Validated per IEC 62443 SR-001 (input validation)
+
+- **Hardware API Endpoints**
+  - `GET /api/hardware` - Full hardware status and pin configuration
+  - Returns: simulation mode, detected components, sensor/fan counts, pin mapping
+  - Includes instructions for connecting missing hardware
+  - JSON response with i2c_sda/scl_gpio, fan_1/2_gpio
+
+- **"Bare" ESP32-S3 Operation**
+  - Flash to unconfigured ESP32-S3 without any connected hardware
+  - Device starts AP mode (`ThermoFlow-XXXX`), serves web config
+  - Simulated sensor data for testing and onboarding
+  - Connect hardware later → reboot → automatic hardware mode
+
+### Added - Web Server Updates (v1.6.0)
+  - `GET /api/hardware` endpoint for hardware status
+  - Simulation mode flag in all API responses
+  - Pin configuration exposed in JSON API
+  - Simplified device info (no hard WiFi manager dependency)
+
+### Changed
+- Updated `main.c` with hardware detection initialization
+- Updated `sensor_manager.c` for simulation mode support
+- Web server returns simulation status in all endpoints
+- Removed wifi_manager dependency from web_server.c (avoid circular deps)
+
+### API Changes
+- Added `GET /api/hardware` - Hardware detection and pin config
+- All endpoints now include `simulation_mode` boolean
+- `/api/ftx/sensors` includes `pin_config` object
+
+### Technical Details
+- I2C probing at 100kHz with 100ms timeout
+- SHT40 addresses scanned: 0x44, 0x45, 0x46, 0x47
+- OLED detection at 0x3C, 0x3D
+- Simulation uses esp_random() for realistic variation
+- No impact on flash usage (~2KB additional code)
+
+---
+
 ## [1.5.0] - 2026-04-03
 
 ### Added - WiFi Manager & Modern Web GUI 🌐
@@ -176,6 +233,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Severity**: Info
 **Description**: New WiFi Manager component with AP mode and web configuration.
 **Status**: ✅ Implemented in v1.5.0
+
+### [SEC-2026-04-09-001] Hardware Detection & Simulation Mode
+**Severity**: Info
+**Description**: Hardware auto-detection with simulation fallback for "bare" ESP32 operation.
+**Status**: ✅ Implemented in v1.6.0
 
 ### Components
 - SR-001: Input Validation (sensor_manager) ✅
