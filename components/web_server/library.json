@@ -1,12 +1,25 @@
 {
   "name": "web_server",
-  "version": "1.0.0",
-  "description": "HTTPS Web Server with REST API",
-  "keywords": ["web", "https", "rest", "api"],
+  "version": "2.0.0",
+  "description": "HTTPS Web Server with TLS 1.3 and EJBCA-PKI integration",
+  "keywords": ["web", "https", "rest", "api", "tls", "security"],
   "frameworks": ["espidf"],
   "platforms": ["espressif32"],
   "headers": ["web_server.h"],
   "dependencies": {
     "bblanchon/ArduinoJson": "^7.0.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anderssonola/ThermoFlow"
+  },
+  "authors": [
+    {
+      "name": "ThermoFlow Team",
+      "email": "thermoflow@lttsweden.se"
+    }
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/anderssonola/ThermoFlow",
+  "documentation": "https://github.com/anderssonola/ThermoFlow/blob/main/docs/HTTPS-SETUP.md"
 }

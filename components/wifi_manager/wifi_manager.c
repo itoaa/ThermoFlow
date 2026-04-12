@@ -1,9 +1,17 @@
 /**
  * @file wifi_manager.c
  * @brief WiFi Manager Implementation - AP Mode Setup with MAC-based naming
+ * 
+ * Security: SEC-021 - WiFi credentials now stored encrypted in NVS
+ * Encryption: AES-256-CBC with HMAC-SHA256 integrity protection
+ * 
+ * @version 2.0.0
+ * @date 2026-04-12
+ * @security SEC-021
  */
 
 #include "wifi_manager.h"
+#include "wifi_secure_storage.h"
 #include "esp_wifi.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -31,6 +39,10 @@ static esp_netif_t *s_wifi_netif = NULL;
 /* AP name with MAC suffix */
 static char s_ap_name[32] = {0};
 
+/* Feature flags */
+static bool s_use_encrypted_storage = true;
+static bool s_secure_storage_initialized = false;
+
 /* Forward declarations */
 static esp_err_t wifi_init_nvs(void);
 static esp_err_t wifi_load_config(void);
@@ -42,7 +54,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data);
 
 esp_err_t wifi_manager_init(void) {
-    ESP_LOGI(TAG, "Initializing WiFi manager");
+    ESP_LOGI(TAG, "Initializing WiFi manager (SEC-021: encrypted storage)");
     
     s_wifi_event_group = xEventGroupCreate();
     
@@ -51,6 +63,20 @@ esp_err_t wifi_manager_init(void) {
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "NVS init failed: %s", esp_err_to_name(ret));
         return ret;
+    }
+    
+    // Initialize secure storage for credentials
+    ret = wifi_secure_storage_init(WIFI_KEY_SOURCE_AUTO);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Secure storage init failed (%s), falling back to plaintext", 
+                 esp_err_to_name(ret));
+        s_use_encrypted_storage = false;
+    } else {
+        s_secure_storage_initialized = true;
+        ESP_LOGI(TAG, "Secure WiFi storage initialized (encrypted)");
+        
+        // Attempt to migrate legacy credentials
+        wifi_secure_migrate_from_legacy();
     }
     
     // Initialize TCP/IP stack
@@ -144,6 +170,29 @@ static void wifi_generate_ap_name(void) {
 }
 
 static esp_err_t wifi_load_config(void) {
+    // Try encrypted storage first
+    if (s_use_encrypted_storage && s_secure_storage_initialized) {
+        if (wifi_secure_has_credentials()) {
+            ESP_LOGI(TAG, "Loading encrypted WiFi credentials");
+            
+            esp_err_t ret = wifi_secure_load_credentials(
+                s_wifi_config.ssid, sizeof(s_wifi_config.ssid),
+                s_wifi_config.password, sizeof(s_wifi_config.password));
+            
+            if (ret == ESP_OK) {
+                s_wifi_config.configured = true;
+                ESP_LOGI(TAG, "Loaded encrypted WiFi config: SSID=%s", s_wifi_config.ssid);
+                return ESP_OK;
+            } else {
+                ESP_LOGE(TAG, "Failed to load encrypted credentials: %s", esp_err_to_name(ret));
+                // Fall through to legacy loading
+            }
+        }
+    }
+    
+    // Legacy plaintext loading (for backwards compatibility)
+    ESP_LOGW(TAG, "Falling back to legacy plaintext storage");
+    
     nvs_handle_t nvs_handle;
     esp_err_t ret = nvs_open(WIFI_NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
     if (ret != ESP_OK) {
@@ -168,11 +217,27 @@ static esp_err_t wifi_load_config(void) {
     s_wifi_config.configured = true;
     nvs_close(nvs_handle);
     
-    ESP_LOGI(TAG, "Loaded WiFi config: SSID=%s", s_wifi_config.ssid);
+    ESP_LOGI(TAG, "Loaded legacy WiFi config: SSID=%s", s_wifi_config.ssid);
+    
+    // Attempt migration to encrypted storage
+    if (s_secure_storage_initialized) {
+        ESP_LOGI(TAG, "Migrating legacy credentials to encrypted storage");
+        wifi_secure_migrate_from_legacy();
+    }
+    
     return ESP_OK;
 }
 
 static esp_err_t wifi_save_config(void) {
+    // Use encrypted storage if available
+    if (s_use_encrypted_storage && s_secure_storage_initialized) {
+        ESP_LOGI(TAG, "Saving WiFi config with encryption");
+        return wifi_secure_store_credentials(s_wifi_config.ssid, s_wifi_config.password);
+    }
+    
+    // Fall back to legacy plaintext storage
+    ESP_LOGW(TAG, "Saving WiFi config without encryption (fallback mode)");
+    
     nvs_handle_t nvs_handle;
     esp_err_t ret = nvs_open(WIFI_NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
     if (ret != ESP_OK) {
@@ -341,7 +406,7 @@ esp_err_t wifi_manager_get_status(wifi_manager_status_t *status) {
 esp_err_t wifi_manager_configure(const char *ssid, const char *password) {
     if (!ssid || !password) return ESP_ERR_INVALID_ARG;
     
-    ESP_LOGI(TAG, "Configuring WiFi: SSID=%s", ssid);
+    ESP_LOGI(TAG, "Configuring WiFi: SSID=%s (SEC-021: encrypted storage)", ssid);
     
     strncpy(s_wifi_config.ssid, ssid, sizeof(s_wifi_config.ssid) - 1);
     strncpy(s_wifi_config.password, password, sizeof(s_wifi_config.password) - 1);
@@ -353,7 +418,7 @@ esp_err_t wifi_manager_configure(const char *ssid, const char *password) {
         return ret;
     }
     
-    ESP_LOGI(TAG, "WiFi config saved, restarting...");
+    ESP_LOGI(TAG, "WiFi config saved with encryption, restarting...");
     esp_restart();
     
     return ESP_OK;
@@ -362,14 +427,20 @@ esp_err_t wifi_manager_configure(const char *ssid, const char *password) {
 esp_err_t wifi_manager_reset(void) {
     ESP_LOGI(TAG, "Resetting WiFi configuration");
     
+    // Delete from encrypted storage first
+    if (s_secure_storage_initialized) {
+        wifi_secure_delete_credentials();
+    }
+    
+    // Also clear legacy storage
     nvs_handle_t nvs_handle;
     esp_err_t ret = nvs_open(WIFI_NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
-    if (ret != ESP_OK) return ret;
-    
-    nvs_erase_key(nvs_handle, WIFI_NVS_KEY_SSID);
-    nvs_erase_key(nvs_handle, WIFI_NVS_KEY_PASSWORD);
-    nvs_commit(nvs_handle);
-    nvs_close(nvs_handle);
+    if (ret == ESP_OK) {
+        nvs_erase_key(nvs_handle, WIFI_NVS_KEY_SSID);
+        nvs_erase_key(nvs_handle, WIFI_NVS_KEY_PASSWORD);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
     
     s_wifi_config.configured = false;
     memset(&s_wifi_config, 0, sizeof(s_wifi_config));
@@ -392,11 +463,24 @@ const char* wifi_manager_get_ap_name(void) {
     return s_ap_name;
 }
 
+bool wifi_manager_has_encrypted_credentials(void) {
+    return s_secure_storage_initialized && wifi_secure_has_credentials();
+}
+
+esp_err_t wifi_manager_get_encryption_status(bool *encrypted, wifi_key_source_t *key_source) {
+    if (!encrypted) return ESP_ERR_INVALID_ARG;
+    return wifi_secure_get_status(encrypted, key_source);
+}
+
 void wifi_manager_deinit(void) {
     esp_wifi_stop();
     esp_wifi_deinit();
+    
     if (s_wifi_event_group) {
         vEventGroupDelete(s_wifi_event_group);
         s_wifi_event_group = NULL;
     }
+    
+    wifi_secure_storage_deinit();
+    s_secure_storage_initialized = false;
 }

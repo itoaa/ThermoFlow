@@ -4,25 +4,33 @@
  * 
  * First boot: Creates AP "ThermoFlow-XXXX" (last 4 hex of MAC)
  * User connects, configures WiFi via web interface
- * Credentials saved to NVS, device reboots and connects to configured WiFi
+ * Credentials saved to NVS (encrypted), device reboots and connects to configured WiFi
+ * 
+ * Security: SEC-021 - WiFi credentials encrypted using AES-256-CBC
+ * Encryption: Credentials encrypted with device-unique key derivation
  * 
  * Features:
  * - AP mode with unique name based on MAC address
  * - Web-based WiFi configuration
- * - WiFi credentials saved to NVS (flash)
+ * - WiFi credentials saved to encrypted NVS (flash)
  * - Automatic reconnection on boot
  * - Fallback to AP mode if connection fails
+ * - Secure credential migration from legacy plaintext storage
  * 
  * @author Ola Andersson
- * @version 1.0.0
- * @date 2026-04-03
+ * @version 2.0.0
+ * @date 2026-04-12
+ * @security SEC-021
  */
 
 #ifndef WIFI_MANAGER_H
+
+#include "wifi_types.h"
 #define WIFI_MANAGER_H
 
 #include "esp_err.h"
 #include "esp_wifi_types.h"  /* For wifi_sta_config_t compatibility */
+#include "wifi_secure_storage.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -90,6 +98,8 @@ typedef struct {
  * - If found: Attempts to connect to configured WiFi
  * - If not found: Starts AP mode for configuration
  * 
+ * Credentials are stored using AES-256 encryption (SEC-021).
+ * 
  * @return ESP_OK on success, error code otherwise
  */
 esp_err_t wifi_manager_init(void);
@@ -117,8 +127,10 @@ esp_err_t wifi_manager_get_status(wifi_manager_status_t *status);
 /**
  * @brief Configure WiFi credentials
  * 
- * Saves credentials to NVS and attempts connection.
+ * Saves credentials to encrypted NVS and attempts connection.
  * Will reboot device on success.
+ * 
+ * Security: Credentials are encrypted with AES-256 before storage.
  * 
  * @param ssid WiFi SSID
  * @param password WiFi password
@@ -129,7 +141,7 @@ esp_err_t wifi_manager_configure(const char *ssid, const char *password);
 /**
  * @brief Reset WiFi configuration
  * 
- * Clears saved credentials from NVS.
+ * Clears saved credentials from encrypted NVS.
  * Device will start in AP mode on next boot.
  * 
  * @return ESP_OK on success
@@ -158,6 +170,22 @@ bool wifi_manager_is_ap_mode(void);
  * @return AP name string (static buffer)
  */
 const char* wifi_manager_get_ap_name(void);
+
+/**
+ * @brief Check if credentials are stored with encryption
+ * 
+ * @return true if encrypted credentials exist
+ */
+bool wifi_manager_has_encrypted_credentials(void);
+
+/**
+ * @brief Get encryption status
+ * 
+ * @param[out] encrypted Set to true if using encrypted storage
+ * @param[out] key_source Current key source type
+ * @return ESP_OK on success
+ */
+esp_err_t wifi_manager_get_encryption_status(bool *encrypted, wifi_key_source_t *key_source);
 
 /**
  * @brief Deinitialize WiFi manager

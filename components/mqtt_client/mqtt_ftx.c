@@ -1,10 +1,17 @@
 /**
  * @file mqtt_ftx.c
  * @brief MQTT Client Extension for Mini-FTX - Implementation
+ * 
+ * Extended to support MQTT-TLS (SEC-016)
+ * 
+ * @version 2.0.0
+ * @date 2026-04-12
+ * @security SEC-016: MQTT-TLS Integration
  */
 
 #include "mqtt_ftx.h"
 #include "mqtt_client.h"
+#include "security_manager.h"
 #include <string.h>
 #include <stdio.h>
 #include <cJSON.h>
@@ -12,12 +19,138 @@
 #include "esp_log.h"
 static const char *TAG = "MQTT_FTX";
 
+// Global MQTT client instance
+static mqtt_client_handle_t s_mqtt_client = NULL;
+static bool s_initialized = false;
+
 esp_err_t mqtt_ftx_init(void) {
     ESP_LOGI(TAG, "FTX MQTT module initialized");
+    
+    // Initialize MQTT client library
+    esp_err_t ret = mqtt_client_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize MQTT client: %d", ret);
+        return ret;
+    }
+    
+    // Create client instance
+    ret = mqtt_client_create(&s_mqtt_client);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create MQTT client: %d", ret);
+        return ret;
+    }
+    
+    s_initialized = true;
+    ESP_LOGI(TAG, "FTX MQTT module initialized (TLS-enabled)");
     return ESP_OK;
 }
 
+esp_err_t mqtt_ftx_configure_tls(const char *broker_host, uint16_t port, 
+                                  bool use_client_cert) {
+    if (!s_initialized || !s_mqtt_client) {
+        ESP_LOGE(TAG, "MQTT not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    mqtt_tls_config_t tls_config = {
+        .use_tls = true,
+        .verify_server_cert = true,
+        .skip_common_name_check = false,
+        .use_client_cert = use_client_cert,
+        .certificate_pinning = false
+    };
+    
+    // Try to load certificates from NVS
+    char *ca_cert = NULL;
+    size_t ca_len = 0;
+    if (security_load_certificate(SEC_CERT_TYPE_CA, &ca_cert, &ca_len) == ESP_OK) {
+        tls_config.ca_cert = ca_cert;
+        tls_config.ca_cert_len = ca_len;
+        ESP_LOGI(TAG, "Loaded CA certificate from NVS (%zu bytes)", ca_len);
+    } else {
+        ESP_LOGW(TAG, "No CA certificate in NVS, using certificate bundle");
+    }
+    
+    // Load client certificate if mTLS requested
+    if (use_client_cert) {
+        char *client_cert = NULL, *client_key = NULL;
+        size_t cert_len = 0, key_len = 0;
+        
+        if (security_load_certificate(SEC_CERT_TYPE_CLIENT, &client_cert, &cert_len) == ESP_OK &&
+            security_load_certificate(SEC_CERT_TYPE_CLIENT_KEY, &client_key, &key_len) == ESP_OK) {
+            tls_config.client_cert = client_cert;
+            tls_config.client_cert_len = cert_len;
+            tls_config.client_key = client_key;
+            tls_config.client_key_len = key_len;
+            ESP_LOGI(TAG, "Loaded client certificates for mTLS");
+        } else {
+            ESP_LOGW(TAG, "mTLS requested but client certificates not found");
+        }
+    }
+    
+    mqtt_config_t config = {
+        .broker_host = {0},
+        .port = port,
+        .client_id = "thermoflow-ftx",
+        .keepalive_sec = 60,
+        .tls = tls_config,
+        .connect_timeout_ms = 10000,
+        .reconnect_delay_ms = 1000,
+        .max_reconnect_delay_ms = 30000
+    };
+    
+    strncpy(config.broker_host, broker_host, MQTT_MAX_BROKER_LEN - 1);
+    
+    esp_err_t ret = mqtt_client_configure(s_mqtt_client, &config);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to configure MQTT client: %d", ret);
+        free(ca_cert);
+        free((void*)tls_config.client_cert);
+        free((void*)tls_config.client_key);
+        return ret;
+    }
+    
+    ESP_LOGI(TAG, "MQTT-TLS configured for %s:%d", broker_host, port);
+    return ESP_OK;
+}
+
+esp_err_t mqtt_ftx_connect(void) {
+    if (!s_initialized || !s_mqtt_client) {
+        ESP_LOGE(TAG, "MQTT not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    ESP_LOGI(TAG, "Connecting to MQTT broker with TLS...");
+    esp_err_t ret = mqtt_client_start(s_mqtt_client);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to connect: %d", ret);
+        return ret;
+    }
+    
+    ESP_LOGI(TAG, "MQTT-TLS connected");
+    return ESP_OK;
+}
+
+esp_err_t mqtt_ftx_disconnect(void) {
+    if (!s_initialized || !s_mqtt_client) {
+        return ESP_OK;
+    }
+    
+    ESP_LOGI(TAG, "Disconnecting from MQTT broker...");
+    return mqtt_client_stop(s_mqtt_client);
+}
+
 esp_err_t mqtt_ftx_publish_sensors(const ftx_sensor_data_t *data) {
+    if (!s_initialized || !s_mqtt_client) {
+        ESP_LOGE(TAG, "MQTT not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    if (!mqtt_client_is_connected(s_mqtt_client)) {
+        ESP_LOGW(TAG, "MQTT not connected, cannot publish");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     cJSON *root = cJSON_CreateObject();
     if (!root) return ESP_ERR_NO_MEM;
 
@@ -42,15 +175,24 @@ esp_err_t mqtt_ftx_publish_sensors(const ftx_sensor_data_t *data) {
     
     if (!payload) return ESP_ERR_NO_MEM;
 
-    esp_err_t ret = mqtt_client_publish(FTX_TOPIC_SENSORS, 
+    esp_err_t ret = mqtt_client_publish(s_mqtt_client, FTX_TOPIC_SENSORS, 
                                         (uint8_t*)payload, strlen(payload), 
                                         MQTT_QOS_1, false);
     free(payload);
+    
+    if (ret == ESP_OK) {
+        ESP_LOGD(TAG, "Published sensor data");
+    }
     
     return ret;
 }
 
 esp_err_t mqtt_ftx_publish_efficiency(const ftx_efficiency_data_t *data) {
+    if (!s_initialized || !s_mqtt_client) {
+        ESP_LOGE(TAG, "MQTT not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     cJSON *root = cJSON_CreateObject();
     if (!root) return ESP_ERR_NO_MEM;
 
@@ -65,7 +207,7 @@ esp_err_t mqtt_ftx_publish_efficiency(const ftx_efficiency_data_t *data) {
     
     if (!payload) return ESP_ERR_NO_MEM;
 
-    esp_err_t ret = mqtt_client_publish(FTX_TOPIC_EFFICIENCY, 
+    esp_err_t ret = mqtt_client_publish(s_mqtt_client, FTX_TOPIC_EFFICIENCY, 
                                         (uint8_t*)payload, strlen(payload), 
                                         MQTT_QOS_1, false);
     free(payload);
@@ -74,6 +216,11 @@ esp_err_t mqtt_ftx_publish_efficiency(const ftx_efficiency_data_t *data) {
 }
 
 esp_err_t mqtt_ftx_publish_energy_stats(const ftx_energy_stats_t *stats) {
+    if (!s_initialized || !s_mqtt_client) {
+        ESP_LOGE(TAG, "MQTT not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     cJSON *root = cJSON_CreateObject();
     if (!root) return ESP_ERR_NO_MEM;
 
@@ -88,7 +235,7 @@ esp_err_t mqtt_ftx_publish_energy_stats(const ftx_energy_stats_t *stats) {
     
     if (!payload) return ESP_ERR_NO_MEM;
 
-    esp_err_t ret = mqtt_client_publish(FTX_TOPIC_STATS, 
+    esp_err_t ret = mqtt_client_publish(s_mqtt_client, FTX_TOPIC_STATS, 
                                         (uint8_t*)payload, strlen(payload), 
                                         MQTT_QOS_1, true); // Retain last stats
     free(payload);
@@ -97,6 +244,11 @@ esp_err_t mqtt_ftx_publish_energy_stats(const ftx_energy_stats_t *stats) {
 }
 
 esp_err_t mqtt_ftx_publish_status(const ftx_status_flags_t *status) {
+    if (!s_initialized || !s_mqtt_client) {
+        ESP_LOGE(TAG, "MQTT not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     cJSON *root = cJSON_CreateObject();
     if (!root) return ESP_ERR_NO_MEM;
 
@@ -113,7 +265,7 @@ esp_err_t mqtt_ftx_publish_status(const ftx_status_flags_t *status) {
     
     if (!payload) return ESP_ERR_NO_MEM;
 
-    esp_err_t ret = mqtt_client_publish(FTX_TOPIC_STATUS, 
+    esp_err_t ret = mqtt_client_publish(s_mqtt_client, FTX_TOPIC_STATUS, 
                                         (uint8_t*)payload, strlen(payload), 
                                         MQTT_QOS_1, false);
     free(payload);
@@ -126,6 +278,11 @@ esp_err_t mqtt_ftx_publish_full_state(
     const ftx_efficiency_data_t *efficiency,
     const ftx_status_flags_t *status
 ) {
+    if (!s_initialized || !s_mqtt_client) {
+        ESP_LOGE(TAG, "MQTT not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     cJSON *root = cJSON_CreateObject();
     if (!root) return ESP_ERR_NO_MEM;
 
@@ -161,7 +318,7 @@ esp_err_t mqtt_ftx_publish_full_state(
     
     if (!payload) return ESP_ERR_NO_MEM;
 
-    esp_err_t ret = mqtt_client_publish(FTX_TOPIC_PREFIX "/state", 
+    esp_err_t ret = mqtt_client_publish(s_mqtt_client, FTX_TOPIC_PREFIX "/state", 
                                         (uint8_t*)payload, strlen(payload), 
                                         MQTT_QOS_1, false);
     free(payload);
@@ -170,6 +327,11 @@ esp_err_t mqtt_ftx_publish_full_state(
 }
 
 esp_err_t mqtt_ftx_send_alert(const char *alert_type, const char *message) {
+    if (!s_initialized || !s_mqtt_client) {
+        ESP_LOGE(TAG, "MQTT not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     cJSON *root = cJSON_CreateObject();
     if (!root) return ESP_ERR_NO_MEM;
 
@@ -182,7 +344,7 @@ esp_err_t mqtt_ftx_send_alert(const char *alert_type, const char *message) {
     
     if (!payload) return ESP_ERR_NO_MEM;
 
-    esp_err_t ret = mqtt_client_publish(FTX_TOPIC_ALERTS, 
+    esp_err_t ret = mqtt_client_publish(s_mqtt_client, FTX_TOPIC_ALERTS, 
                                         (uint8_t*)payload, strlen(payload), 
                                         MQTT_QOS_2, false); // QoS 2 for alerts
     free(payload);
@@ -191,6 +353,11 @@ esp_err_t mqtt_ftx_send_alert(const char *alert_type, const char *message) {
 }
 
 esp_err_t mqtt_ftx_ha_discovery(void) {
+    if (!s_initialized || !s_mqtt_client) {
+        ESP_LOGE(TAG, "MQTT not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
     // Home Assistant MQTT Discovery for sensors
     const char *discovery_template = "{"
         "\"name\":\"FTX Supply Temp\","
@@ -199,9 +366,9 @@ esp_err_t mqtt_ftx_ha_discovery(void) {
         "\"unit_of_meas\":\"°C\","
         "\"value_template\":\"{{ value_json.supply_temp }}\","
         "\"dev_cla\":\"temperature\","
-        "\"stat_cla\":\"measurement\"""};
+        "\"stat_cla\":\"measurement\"}";
 
-    mqtt_client_publish("homeassistant/sensor/thermoflow_ftx_supply_temp/config",
+    mqtt_client_publish(s_mqtt_client, "homeassistant/sensor/thermoflow_ftx_supply_temp/config",
                          (uint8_t*)discovery_template, strlen(discovery_template),
                          MQTT_QOS_1, true); // Retain
 
@@ -232,7 +399,41 @@ esp_err_t mqtt_ftx_process_command(const char *topic, const char *payload, ftx_c
     return ESP_OK;
 }
 
+esp_err_t mqtt_ftx_loop(void) {
+    if (!s_initialized || !s_mqtt_client) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    return mqtt_client_loop(s_mqtt_client);
+}
+
+bool mqtt_ftx_is_connected(void) {
+    if (!s_initialized || !s_mqtt_client) {
+        return false;
+    }
+    
+    return mqtt_client_is_connected(s_mqtt_client);
+}
+
+mqtt_status_t mqtt_ftx_get_status(void) {
+    if (!s_initialized || !s_mqtt_client) {
+        return MQTT_STATUS_DISCONNECTED;
+    }
+    
+    return mqtt_client_get_status(s_mqtt_client);
+}
+
 esp_err_t mqtt_ftx_deinit(void) {
+    ESP_LOGI(TAG, "FTX MQTT module deinitializing...");
+    
+    if (s_mqtt_client) {
+        mqtt_client_destroy(s_mqtt_client);
+        s_mqtt_client = NULL;
+    }
+    
+    mqtt_client_deinit();
+    s_initialized = false;
+    
     ESP_LOGI(TAG, "FTX MQTT module deinitialized");
     return ESP_OK;
 }

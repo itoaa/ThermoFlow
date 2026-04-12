@@ -5,8 +5,9 @@
  * Handles certificates, authentication, and secure operations
  * Implements IEC 62443 SR-002: Authentication & Authorization
  * 
- * @version 1.0.0
- * @date 2026-03-22
+ * @version 2.0.0
+ * @date 2026-04-12
+ * @security SEC-016: MQTT-TLS Certificate Management
  */
 
 #ifndef SECURITY_MANAGER_H
@@ -25,7 +26,12 @@ extern "C" {
 #define SEC_MAX_USERNAME_LEN    32
 #define SEC_MAX_PASSWORD_LEN    64
 #define SEC_HASH_LEN            32
-#define SEC_MAX_CERT_LEN        2048
+#define SEC_MAX_CERT_LEN        4096
+#define SEC_MAX_KEY_LEN         2048
+
+/* ============================================
+ * Core Security Functions
+ * ============================================ */
 
 /**
  * @brief Security manager initialization
@@ -105,8 +111,118 @@ bool security_validate_credentials(const char *username, const char *password);
  */
 bool security_has_credentials(void);
 
+/* ============================================
+ * Certificate Management (SEC-016)
+ * ============================================ */
+
 /**
- * @brief Generate self-signed certificate
+ * @brief Certificate types for MQTT-TLS
+ */
+typedef enum {
+    SEC_CERT_TYPE_CA = 0,           /*!< CA certificate */
+    SEC_CERT_TYPE_CLIENT,           /*!< Client certificate (mTLS) */
+    SEC_CERT_TYPE_CLIENT_KEY,       /*!< Client private key */
+    SEC_CERT_TYPE_SERVER            /*!< Server certificate (for web server) */
+} sec_cert_type_t;
+
+/**
+ * @brief Store certificate in secure NVS storage
+ * 
+ * @param type Certificate type
+ * @param cert Certificate data (PEM)
+ * @param cert_len Certificate length
+ * @return ESP_OK on success
+ */
+esp_err_t security_store_certificate(sec_cert_type_t type, const char *cert, size_t cert_len);
+
+/**
+ * @brief Load certificate from NVS
+ * 
+ * @param type Certificate type
+ * @param[out] cert Buffer for certificate (must be freed by caller)
+ * @param[out] cert_len Certificate length
+ * @return ESP_OK on success
+ */
+esp_err_t security_load_certificate(sec_cert_type_t type, char **cert, size_t *cert_len);
+
+/**
+ * @brief Delete certificate from NVS
+ * 
+ * @param type Certificate type
+ * @return ESP_OK on success
+ */
+esp_err_t security_delete_certificate(sec_cert_type_t type);
+
+/**
+ * @brief Check if certificate exists
+ * 
+ * @param type Certificate type
+ * @return true if certificate exists
+ */
+bool security_has_certificate(sec_cert_type_t type);
+
+/**
+ * @brief Calculate certificate fingerprint (SHA-256)
+ * 
+ * @param cert Certificate in PEM format
+ * @param[out] fingerprint Output buffer (32 bytes)
+ * @return ESP_OK on success
+ */
+esp_err_t security_calc_cert_fingerprint(const char *cert, uint8_t *fingerprint);
+
+/**
+ * @brief Validate certificate format
+ * 
+ * @param cert Certificate in PEM format
+ * @param expected_type Expected certificate type (0 for any)
+ * @return true if valid
+ */
+bool security_validate_cert_format(const char *cert, int expected_type);
+
+/**
+ * @brief Check if certificate is expired
+ * 
+ * @param cert Certificate in PEM format
+ * @param[out] days_remaining Days until expiry (can be NULL)
+ * @return true if expired or invalid
+ */
+bool security_is_cert_expired(const char *cert, int *days_remaining);
+
+/**
+ * @brief Generate certificate signing request (CSR)
+ * 
+ * @param[out] csr Buffer for CSR (PEM)
+ * @param csr_len CSR buffer size
+ * @param cn Common name
+ * @param org Organization (can be NULL)
+ * @param country Country code (can be NULL)
+ * @return ESP_OK on success
+ */
+esp_err_t security_generate_csr(char *csr, size_t csr_len, 
+                                const char *cn, const char *org, const char *country);
+
+/**
+ * @brief Store certificate pinning hash
+ * 
+ * @param hash SHA-256 hash (32 bytes)
+ * @return ESP_OK on success
+ */
+esp_err_t security_store_pinning_hash(const uint8_t *hash);
+
+/**
+ * @brief Load certificate pinning hash
+ * 
+ * @param[out] hash Buffer (32 bytes)
+ * @return ESP_OK on success
+ */
+esp_err_t security_load_pinning_hash(uint8_t *hash);
+
+/* ============================================
+ * Legacy Certificate Functions
+ * ============================================ */
+
+/**
+ * @brief Generate self-signed certificate (legacy)
  * 
  * @param[out] cert Buffer for certificate (PEM)
  * @param cert_len Certificate buffer size
@@ -121,13 +237,17 @@ esp_err_t security_generate_certificate(char *cert, size_t cert_len,
                                         const char *cn, int days_valid);
 
 /**
- * @brief Verify certificate chain
+ * @brief Verify certificate chain (legacy)
  * 
  * @param cert Certificate to verify
  * @param ca_cert CA certificate
  * @return true if valid
  */
 bool security_verify_certificate(const uint8_t *cert, const uint8_t *ca_cert);
+
+/* ============================================
+ * Cryptographic Functions
+ * ============================================ */
 
 /**
  * @brief Sign data with Ed25519
@@ -172,12 +292,25 @@ esp_err_t security_store_ota_keys(const uint8_t *public_key, const uint8_t *priv
  */
 esp_err_t security_load_ota_keys(uint8_t *public_key, uint8_t *private_key, bool *has_private);
 
+/* ============================================
+ * Status Functions
+ * ============================================ */
+
 /**
  * @brief Get security status
  * 
  * @return true if security subsystem is healthy
  */
 bool security_is_healthy(void);
+
+/**
+ * @brief Get detailed security status
+ * 
+ * @param[out] certs_configured Number of configured certificates
+ * @param[out] tls_ready true if TLS is ready
+ * @return ESP_OK on success
+ */
+esp_err_t security_get_status(uint8_t *certs_configured, bool *tls_ready);
 
 /**
  * @brief Deinitialize security manager

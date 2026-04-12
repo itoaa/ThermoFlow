@@ -1,0 +1,172 @@
+# MQTT-TLS Configuration for ThermoFlow
+# Implements SEC-016: Critical Security Remediation
+
+menu "MQTT-TLS Configuration"
+
+    config MQTT_TLS_ENABLED
+        bool "Enable MQTT over TLS (MQTTS)"
+        default y
+        help
+            Enable TLS encryption for MQTT connections.
+            This is HIGHLY RECOMMENDED for production use.
+            
+            Disabling this will send all MQTT traffic, including
+            credentials and sensor data, in plaintext.
+
+    config MQTT_TLS_PORT
+        int "MQTTS Port"
+        default 8883
+        depends on MQTT_TLS_ENABLED
+        help
+            Port for MQTT over TLS connections.
+            Standard port is 8883.
+
+    choice MQTT_TLS_VERSION
+        prompt "Minimum TLS Version"
+        default MQTT_TLS_VERSION_1_3
+        depends on MQTT_TLS_ENABLED
+        help
+            Select minimum TLS version.
+            TLS 1.3 is recommended for best security.
+
+        config MQTT_TLS_VERSION_1_2
+            bool "TLS 1.2"
+            help
+                Use TLS 1.2 (legacy compatibility mode)
+
+        config MQTT_TLS_VERSION_1_3
+            bool "TLS 1.3"
+            help
+                Use TLS 1.3 (recommended - best security)
+    endchoice
+
+    config MQTT_TLS_MIN_VERSION
+        int
+        default 2 if MQTT_TLS_VERSION_1_2
+        default 3 if MQTT_TLS_VERSION_1_3
+
+    config MQTT_TLS_SERVER_VERIFICATION
+        bool "Enable Server Certificate Verification"
+        default y
+        depends on MQTT_TLS_ENABLED
+        help
+            Verify MQTT broker's certificate against CA.
+            Disabling this allows man-in-the-middle attacks.
+
+    config MQTT_TLS_HOSTNAME_CHECK
+        bool "Enable Hostname Verification"
+        default y
+        depends on MQTT_TLS_ENABLED
+        help
+            Verify broker certificate hostname matches configured host.
+
+    config MQTT_TLS_CERT_PINNING
+        bool "Enable Certificate Pinning"
+        default n
+        depends on MQTT_TLS_ENABLED
+        help
+            Pin to specific certificate hash for additional security.
+            Requires the pinned certificate hash to be set at runtime.
+
+    config MQTT_TLS_MTLS
+        bool "Enable Client Certificate Authentication (mTLS)"
+        default n
+        depends on MQTT_TLS_ENABLED
+        help
+            Use client certificates for mutual TLS authentication.
+            Requires client certificate and private key provisioning.
+
+    config MQTT_TLS_ALLOW_PLAINTEXT_FALLBACK
+        bool "Allow Plaintext Fallback (INSECURE)"
+        default n
+        depends on MQTT_TLS_ENABLED
+        help
+            FALLBACK TO PLAINTEXT MQTT IF TLS FAILS.
+            
+            WARNING: This creates a security vulnerability!
+            An attacker can force downgrade to plaintext.
+            Only enable for development/debugging.
+
+    config MQTT_TLS_CA_CERT_EMBED
+        bool "Embed CA Certificate in Firmware"
+        default n
+        depends on MQTT_TLS_ENABLED
+        help
+            Include CA certificate in firmware binary.
+            Alternative to loading from NVS at runtime.
+
+    config MQTT_TLS_CA_CERT_PATH
+        string "Path to CA Certificate PEM"
+        default ""
+        depends on MQTT_TLS_ENABLED && MQTT_TLS_CA_CERT_EMBED
+        help
+            File path to CA certificate in PEM format.
+            Will be embedded as a string constant.
+
+    config MQTT_TLS_CONNECTION_TIMEOUT_MS
+        int "TLS Connection Timeout (ms)"
+        default 10000
+        range 5000 60000
+        depends on MQTT_TLS_ENABLED
+        help
+            Timeout for TLS handshake in milliseconds.
+
+    config MQTT_TLS_RX_BUFFER_SIZE
+        int "TLS RX Buffer Size"
+        default 4096
+        range 1024 16384
+        depends on MQTT_TLS_ENABLED
+        help
+            Size of TLS receive buffer.
+
+    config MQTT_TLS_TX_BUFFER_SIZE
+        int "TLS TX Buffer Size"
+        default 4096
+        range 1024 16384
+        depends on MQTT_TLS_ENABLED
+        help
+            Size of TLS transmit buffer.
+
+    config MQTT_TLS_RECONNECT_DELAY_MS
+        int "Initial Reconnect Delay (ms)"
+        default 1000
+        range 100 10000
+        depends on MQTT_TLS_ENABLED
+        help
+            Initial delay before reconnection attempt.
+
+    config MQTT_TLS_MAX_RECONNECT_DELAY_MS
+        int "Maximum Reconnect Delay (ms)"
+        default 30000
+        range 5000 300000
+        depends on MQTT_TLS_ENABLED
+        help
+            Maximum delay between reconnection attempts (exponential backoff).
+
+endmenu
+
+menu "MQTT Protocol Configuration"
+
+    config MQTT_MAX_SUBSCRIPTIONS
+        int "Maximum Subscriptions"
+        default 8
+        range 1 32
+        help
+            Maximum number of MQTT subscriptions per client.
+
+    config MQTT_KEEPALIVE_INTERVAL_SEC
+        int "Keepalive Interval (seconds)"
+        default 60
+        range 10 600
+        help
+            Interval between MQTT keepalive pings.
+
+    config MQTT_PUBLISH_QOS
+        int "Default Publish QoS"
+        default 1
+        range 0 2
+        help
+            Default Quality of Service level for publishes.
+            0 = At most once, 1 = At least once, 2 = Exactly once.
+
+endmenu

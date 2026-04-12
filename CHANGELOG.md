@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.0] - 2026-04-12
+
+### Added - HTTPS Web Server Security Enhancement (SEC-018) 🔒
+
+- **HTTPS Server Implementation** (`components/web_server/`)
+  - TLS 1.3 with fallback to TLS 1.2
+  - Secure cipher suites only (AEAD: AES-GCM, ChaCha20-Poly1305)
+  - HTTP-to-HTTPS redirect on port 80 → 443
+  - Certificate management integration with `security_utils`
+  - Auto-provisioning from EJBCA-PKI
+  - Certificate renewal 30 days before expiry
+  - `web_server_start_https()`, `web_server_restart_https()`
+  - `web_server_provision_certificate()`, `web_server_check_cert_renewal()`
+
+- **Security Headers** (all HTTPS responses)
+  - `Strict-Transport-Security` (HSTS) with configurable max-age
+  - `Content-Security-Policy` (CSP) - XSS protection
+  - `X-Frame-Options: DENY` - Clickjacking prevention
+  - `X-Content-Type-Options: nosniff` - MIME sniffing protection
+  - `X-XSS-Protection: 1; mode=block`
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - `Permissions-Policy` - Feature restrictions
+
+- **Certificate Management API**
+  - `GET /api/cert/status` - Certificate info and expiry
+  - Returns: has_server_cert, has_server_key, days_until_expiry, fingerprint
+  - Integration with existing `security_manager` component
+
+- **Configuration via menuconfig**
+  - `WEB_SERVER_HTTPS_ENABLED` - Enable/disable HTTPS
+  - `WEB_SERVER_HTTPS_PORT` - HTTPS port (default 443)
+  - `WEB_SERVER_HTTP_REDIRECT` - HTTP → HTTPS redirect
+  - `WEB_SERVER_TLS_VERSION` - TLS 1.2/1.3 selection
+  - `WEB_SERVER_ENABLE_MTLS` - Mutual TLS authentication
+  - `WEB_SERVER_ENABLE_HSTS` - HTTP Strict Transport Security
+  - `WEB_SERVER_ENABLE_CSP` - Content Security Policy
+  - `WEB_SERVER_AUTO_PROVISION` - Auto-request certs from EJBCA
+  - `WEB_SERVER_EJBCA_URL` - EJBCA server URL
+
+- **New API Endpoints**
+  - `GET /api/cert/status` - Certificate status and health
+  - All existing endpoints now include `https_enabled` flag
+
+- **Documentation**
+  - `docs/HTTPS-SETUP.md` - Complete setup and configuration guide
+  - Security best practices and troubleshooting
+  - SSL Labs-style testing instructions
+
+### Security Fixes (1 Critical)
+
+1. **SEC-018: HTTPS Web Server Implementation** (CVSS 7.5 → Fixed)
+   - **Finding THF-003**: Web server operated over unencrypted HTTP only
+   - **Risk**: Credential theft, session hijacking, configuration tampering
+   - **Fix**: Full HTTPS/TLS 1.3 implementation with security headers
+
+### Technical Details
+- Uses `esp_https_server` component from ESP-IDF
+- Certificate storage: Encrypted NVS partition
+- Key algorithm: ECDSA secp256r1
+- Cipher suites: Only AEAD ciphers (no CBC, no RC4, no SHA1)
+- Memory overhead: ~8KB additional RAM for TLS
+- Fallback: Can start HTTP-only if certificates unavailable
+
+### API Changes
+- Added `https_config_t` configuration structure
+- Added `web_server_cert_info_t` certificate info structure
+- New functions: `web_server_set_https_config()`, `web_server_get_https_config()`
+- New functions: `web_server_get_cert_info()`, `web_server_delete_certificates()`
+- New functions: `web_server_is_https_running()`, `web_server_get_status()`
+- All responses now include security headers when HTTPS enabled
+
+---
+
 ## [1.6.0] - 2026-04-09
 
 ### Added - Hardware Detection & Simulation Mode 🔌
@@ -224,6 +297,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Security Advisory
 
+### [SEC-2026-04-12-001] HTTPS Web Server Implementation
+**Severity**: High (CVSS 7.5) ✅ RESOLVED
+**Description**: Web server operated over unencrypted HTTP only (Finding THF-003)
+**Risk**: Credential theft, session hijacking, configuration tampering
+**Fix**: Full HTTPS/TLS 1.3 implementation with security headers
+**Status**: ✅ Fixed in v2.0.0 (SEC-018)
+
+### [SEC-2026-04-09-002] Hardware Detection & Simulation Mode
+**Severity**: Info
+**Description**: Hardware auto-detection with simulation fallback for "bare" ESP32 operation.
+**Status**: ✅ Implemented in v1.6.0
+
 ### [SEC-2026-04-03-001] Mini-FTX Security Hardening
 **Severity**: Critical (resolved)
 **Description**: 5 security weaknesses identified and fixed in Mini-FTX implementation.
@@ -239,7 +324,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Description**: Hardware auto-detection with simulation fallback for "bare" ESP32 operation.
 **Status**: ✅ Implemented in v1.6.0
 
-### Components
+### Security Components
 - SR-001: Input Validation (sensor_manager) ✅
 - SR-002: Authentication (security_utils) ✅
 - SR-003: Secure Communication (mqtt_client, web_server) ✅
@@ -249,6 +334,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SR-009: Actuator Fail-Safe (fan_control) ✅
 - SR-010: Environmental Limits (anti_condensation) ✅
 - SR-011: OTA Security (security_utils) ✅
+- SEC-018: HTTPS Web Server (web_server) ✅
 
 ---
 
@@ -258,4 +344,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Implementation Status](docs/IMPLEMENTATION_STATUS.md)
 - [Build Instructions](BUILD.md)
 - [Mini-FTX Extension](docs/FTX_EXTENSION.md)
+- [HTTPS Setup Guide](docs/HTTPS-SETUP.md)
 - [Web GUI](components/web_server/web/)

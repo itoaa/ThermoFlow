@@ -1,6 +1,9 @@
 #
 # ThermoFlow sdkconfig.defaults
 # Minimal configuration for ESP32-S3
+# Security: SEC-021 - WiFi Credential Encryption enabled
+# Security: SEC-024 - Secure Boot V2 and Flash Encryption enabled
+# Security: SEC-026 - HTTPS Web Server Implementation
 
 # Target
 CONFIG_IDF_TARGET="esp32s3"
@@ -21,8 +24,32 @@ CONFIG_ESP_WIFI_ENABLED=y
 CONFIG_MQTT_PROTOCOL_311=y
 CONFIG_MQTT_TRANSPORT_SSL=y
 
-# HTTP Server
+# ============================================
+# HTTPS Web Server (SEC-026)
+# ============================================
+
+# Enable HTTP Server
 CONFIG_ESP_HTTP_SERVER=y
+
+# Enable HTTPS Server
+CONFIG_ESP_HTTPS_SERVER_ENABLE=y
+
+# mbedtls - Enable server mode (not just client)
+CONFIG_MBEDTLS_TLS_SERVER_MODE=y
+CONFIG_MBEDTLS_TLS_CLIENT_ONLY=n
+
+# Enable TLS 1.3 support
+CONFIG_MBEDTLS_SSL_PROTO_TLS1_3=y
+CONFIG_MBEDTLS_SSL_PROTO_TLS1_2=y
+
+# Certificate bundle (for verifying remote servers)
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+
+# Disable weak ciphers
+CONFIG_MBEDTLS_DES_C=n
+CONFIG_MBEDTLS_RC4_DISABLED=y
+CONFIG_MBEDTLS_SSL_RENEGOTIATION=n
 
 # I2C/Driver
 CONFIG_I2C_ENABLE_DEBUG_LOG=n
@@ -31,15 +58,167 @@ CONFIG_I2C_ENABLE_DEBUG_LOG=n
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
 
-# Partition table
-CONFIG_PARTITION_TABLE_CUSTOM=n
+# Partition table - using custom partition table with OTA support
+CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_SINGLE_APP=n
 CONFIG_PARTITION_TABLE_TWO_OTA=n
-CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_secure.csv"
 
-# Security
-CONFIG_MBEDTLS_TLS_CLIENT_ONLY=y
+# ============================================
+# NVS Encryption Support (SEC-021)
+# ============================================
 
-# Disable certificate bundle (for now)
-CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=n
-CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_NONE=y
+# Enable NVS encryption
+CONFIG_NVS_ENCRYPTION=y
+
+# ============================================
+# Secure Boot V2 (SEC-024)
+# ============================================
+
+# Enable Secure Boot V2 (RSA)
+CONFIG_SECURE_BOOT=y
+CONFIG_SECURE_BOOT_V2_RSA=y
+
+# Build signed binaries during build
+CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=y
+
+# FÖRBÄTTRING: Nyckel lagras lokalt i projektkatalogen
+# TODO: Flytta till HSM eller använd remote signing
+# För HSM: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/security/secure-boot-v2.html#remote-signing
+# För AWS KMS: https://docs.aws.amazon.com/kms/latest/developerguide/overview.html
+CONFIG_SECURE_BOOT_SIGNING_KEY="keys/secure_boot_signing_key.pem"
+
+# Allow eFuse read-disable (for flash encryption key protection)
+CONFIG_SECURE_BOOT_V2_ALLOW_EFUSE_RD_DIS=y
+
+# Require signed app images
+CONFIG_SECURE_SIGNED_ON_UPDATE=y
+
+# Enable bootloader rollback for OTA
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# FÖRBÄTTRING: Begränsa antalet rollback-versioner för att förhindra
+# downgrade-attacker. Sätt till lämpligt värde baserat på release-cykel.
+# TODO: Konfigurera när produktionsdeployment börjar
+# CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLED=y
+# CONFIG_BOOTLOADER_NUM_REVOKED_PUBLIC_KEYS=3
+
+# ============================================
+# Flash Encryption (SEC-024)
+# ============================================
+
+# Enable flash encryption on boot
+CONFIG_SECURE_FLASH_ENC_ENABLED=y
+
+# FÖRBÄTTRING: Development mode är aktiverat för enkel debugging
+# VARNING: Byt till RELEASE före produktionsdeployment!
+# I RELEASE-läge kan flash inte läsas avverktyg som JTAG.
+# 
+# För produktion:
+# 1. Ändra till CONFIG_SECURE_FLASH_ENCRYPTION_MODE_RELEASE=y
+# 2. Flasha till enhet
+# 3. Anropa esp_flash_encryption_set_release_mode() vid första boot
+# 4. Därefter kan enheten inte flashas utan korrekt signerade binärer
+#
+# Se: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/security/flash-encryption.html
+CONFIG_SECURE_FLASH_ENCRYPTION_MODE_DEVELOPMENT=y
+# CONFIG_SECURE_FLASH_ENCRYPTION_MODE_RELEASE=y
+
+# Flash encryption algorithm (XTS-AES-256 for ESP32-S3)
+CONFIG_SECURE_FLASH_ENCRYPTION_AES256_XTS=y
+
+# FÖRBÄTTRING: UART bootloader är aktiverad för utveckling
+# VARNING: Inaktivera för produktion för att förhindra fysiska attacker!
+# 
+# Konsekvenser av inaktivering:
+# - Kan inte flasha via USB/UART utan att först aktivera "download mode"
+# - Kräver GPIO0-strapping eller specialfirmware för återställning
+# - Rekommenderas starkt för produktionsenheter
+#
+# TODO: Aktivera CONFIG_SECURE_UART_ROM_DL_MODE_DISABLED för produktion
+CONFIG_SECURE_UART_ROM_DL_MODE_ENABLED=y
+# CONFIG_SECURE_UART_ROM_DL_MODE_DISABLED=y
+
+# ============================================
+# Additional Security Features
+# ============================================
+
+# Enable hardware secure boot
+CONFIG_ESP_SECURE_BOOT_V2_RSA=y
+
+# FÖRBÄTTRING: JTAG är aktiverat för debugging
+# VARNING: Inaktivera för produktion för att förhindra fysisk debugging!
+#
+# Inaktivering av JTAG:
+# - Permanent på ESP32-S3 (kan inte återaktiveras)
+# - Förhindrar debugging via JTAG-interface
+# - Rekommenderas för produktionsenheter
+#
+# TODO: Aktivera CONFIG_JTAG_DISABLE för produktionsbuilds
+# CONFIG_JTAG_DISABLE=y
+
+# FÖRBÄTTRING: USB-JTAG är fortfarande aktiverat
+# TODO: Överväg att inaktivera USB-JTAG för produktion
+# CONFIG_ESP_DEBUGO_DISABLE=y
+
+# ============================================
+# mbedtls Configuration for AES-256 and TLS
+# ============================================
+CONFIG_MBEDTLS_AES_C=y
+CONFIG_MBEDTLS_CIPHER_MODE_CBC=y
+CONFIG_MBEDTLS_CIPHER_MODE_CFB=y
+CONFIG_MBEDTLS_CIPHER_MODE_CTR=y
+CONFIG_MBEDTLS_CIPHER_MODE_OFB=y
+CONFIG_MBEDTLS_CIPHER_MODE_XTS=y
+
+# SHA-256 for HMAC
+CONFIG_MBEDTLS_SHA256_C=y
+CONFIG_MBEDTLS_HKDF_C=y
+
+# Certificate parsing
+CONFIG_MBEDTLS_PEM_PARSE_C=y
+CONFIG_MBEDTLS_PEM_WRITE_C=y
+CONFIG_MBEDTLS_BASE64_C=y
+
+# ECC support for modern TLS
+CONFIG_MBEDTLS_ECP_C=y
+CONFIG_MBEDTLS_ECDSA_C=y
+CONFIG_MBEDTLS_ECDH_C=y
+CONFIG_MBEDTLS_ECP_DP_SECP256R1_ENABLED=y
+CONFIG_MBEDTLS_ECP_DP_SECP384R1_ENABLED=y
+CONFIG_MBEDTLS_ECP_DP_CURVE25519_ENABLED=y
+
+# FÖRBÄTTRING: Överväg att inaktivera äldre TLS-versioner
+# TODO: När alla klienter stödjer TLS 1.3, inaktivera TLS 1.2
+# CONFIG_MBEDTLS_SSL_PROTO_TLS1_2=n
+
+# ============================================
+# Bootloader configuration for Secure Boot
+# ============================================
+
+# Increase bootloader log level for debugging
+CONFIG_BOOTLOADER_LOG_LEVEL_INFO=y
+
+# Enable WDT
+CONFIG_BOOTLOADER_WDT_ENABLE=y
+CONFIG_BOOTLOADER_WDT_TIME_MS=9000
+
+# Factory reset/test modes (disabled with secure boot)
+# CONFIG_BOOTLOADER_FACTORY_RESET is not set
+# CONFIG_BOOTLOADER_APP_TEST is not set
+
+# ============================================
+# PRODUKTIONS-CHECKLISTA
+# ============================================
+# Före produktionsdeployment, säkerställ att:
+#
+# [ ] Flash Encryption är i RELEASE-läge
+# [ ] UART bootloader är inaktiverad
+# [ ] JTAG är inaktiverad
+# [ ] Signing-nyckel är i HSM eller säker offline-lagring
+# [ ] Bootloader-loggning är satt till WARN eller högre
+# [ ] Debug-assertions är inaktiverade
+# [ ] OTA-rollback är konfigurerad
+# [ ] Fabriksåterställning är inaktiverad
+#
+# Referens: docs/SECURE_BOOT_PROVISIONING.md

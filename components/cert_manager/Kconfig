@@ -1,0 +1,62 @@
+# Certificate Manager Configuration
+# Implements SEC-026: ThermoFlow HTTPS Web Server
+
+menu "Certificate Manager Configuration"
+
+    config CERT_MANAGER_ENABLED
+        bool "Enable Certificate Manager"
+        default y
+        help
+            Enable certificate lifecycle management for HTTPS.
+            Required for SEC-026 compliance.
+
+    config CERT_MANAGER_AUTO_RENEWAL
+        bool "Enable Automatic Certificate Renewal"
+        default y
+        depends on CERT_MANAGER_ENABLED
+        help
+            Automatically renew certificates before expiry.
+            Recommended for production use.
+
+    config CERT_MANAGER_RENEWAL_DAYS
+        int "Renewal Threshold (days)"
+        default 30
+        range 1 90
+        depends on CERT_MANAGER_ENABLED && CERT_MANAGER_AUTO_RENEWAL
+        help
+            Renew certificate when this many days remain.
+            Default: 30 days before expiry.
+
+    config CERT_MANAGER_KEY_SIZE
+        int "RSA Key Size (bits)"
+        default 2048
+        range 2048 4096
+        depends on CERT_MANAGER_ENABLED
+        help
+            RSA key size for certificate generation.
+            2048 bits recommended for ESP32-S3.
+
+    config CERT_MANAGER_EJBCA_INTEGRATION
+        bool "Enable EJBCA Integration"
+        default n
+        depends on CERT_MANAGER_ENABLED
+        help
+            Enable automatic certificate enrollment with EJBCA-PKI.
+            Requires EJBCA server configuration.
+
+    config CERT_MANAGER_EJBCA_URL
+        string "EJBCA Server URL"
+        default "https://ejbca.lttsweden.local:8443"
+        depends on CERT_MANAGER_ENABLED && CERT_MANAGER_EJBCA_INTEGRATION
+        help
+            URL of the EJBCA-PKI server.
+
+    config CERT_MANAGER_DEVICE_ID
+        string "Device ID Prefix"
+        default "ThermoFlow"
+        depends on CERT_MANAGER_ENABLED
+        help
+            Prefix for device certificate CN.
+            MAC address will be appended.
+
+endmenu

@@ -1,6 +1,12 @@
 /**
  * @file mqtt_ftx.h
  * @brief MQTT Client Extension for Mini-FTX
+ * 
+ * Extended to support MQTT-TLS (SEC-016)
+ * 
+ * @version 2.0.0
+ * @date 2026-04-12
+ * @security SEC-016: MQTT-TLS Integration
  */
 
 #ifndef MQTT_FTX_H
@@ -9,6 +15,16 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "esp_err.h"
+
+// Forward declaration from mqtt_client.h
+typedef enum {
+    MQTT_STATUS_DISCONNECTED = 0,
+    MQTT_STATUS_CONNECTING,
+    MQTT_STATUS_CONNECTED,
+    MQTT_STATUS_ERROR_TLS,
+    MQTT_STATUS_ERROR_CERT,
+    MQTT_STATUS_ERROR_NETWORK
+} mqtt_status_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -91,38 +107,120 @@ typedef enum {
     FTX_CMD_EMERGENCY_STOP      // Emergency stop
 } ftx_command_t;
 
-/* Initialize FTX MQTT module */
+/**
+ * @brief Initialize FTX MQTT module
+ * @return ESP_OK on success
+ */
 esp_err_t mqtt_ftx_init(void);
 
-/* Publish FTX sensor data */
+/**
+ * @brief Configure MQTT-TLS connection
+ * @param broker_host MQTT broker hostname
+ * @param port Broker port (8883 for MQTTS)
+ * @param use_client_cert Enable mTLS authentication
+ * @return ESP_OK on success
+ */
+esp_err_t mqtt_ftx_configure_tls(const char *broker_host, uint16_t port, bool use_client_cert);
+
+/**
+ * @brief Connect to MQTT broker with TLS
+ * @return ESP_OK on success
+ */
+esp_err_t mqtt_ftx_connect(void);
+
+/**
+ * @brief Disconnect from MQTT broker
+ * @return ESP_OK on success
+ */
+esp_err_t mqtt_ftx_disconnect(void);
+
+/**
+ * @brief Publish FTX sensor data
+ * @param data Sensor data
+ * @return ESP_OK on success
+ */
 esp_err_t mqtt_ftx_publish_sensors(const ftx_sensor_data_t *data);
 
-/* Publish FTX efficiency and calculations */
+/**
+ * @brief Publish FTX efficiency and calculations
+ * @param data Efficiency data
+ * @return ESP_OK on success
+ */
 esp_err_t mqtt_ftx_publish_efficiency(const ftx_efficiency_data_t *data);
 
-/* Publish energy statistics */
+/**
+ * @brief Publish energy statistics
+ * @param stats Energy statistics
+ * @return ESP_OK on success
+ */
 esp_err_t mqtt_ftx_publish_energy_stats(const ftx_energy_stats_t *stats);
 
-/* Publish status flags */
+/**
+ * @brief Publish status flags
+ * @param status Status flags
+ * @return ESP_OK on success
+ */
 esp_err_t mqtt_ftx_publish_status(const ftx_status_flags_t *status);
 
-/* Publish complete FTX state (all in one JSON) */
+/**
+ * @brief Publish complete FTX state (all in one JSON)
+ * @param sensors Sensor data
+ * @param efficiency Efficiency data
+ * @param status Status flags
+ * @return ESP_OK on success
+ */
 esp_err_t mqtt_ftx_publish_full_state(
     const ftx_sensor_data_t *sensors,
     const ftx_efficiency_data_t *efficiency,
     const ftx_status_flags_t *status
 );
 
-/* Send alert message */
+/**
+ * @brief Send alert message
+ * @param alert_type Alert type identifier
+ * @param message Alert message
+ * @return ESP_OK on success
+ */
 esp_err_t mqtt_ftx_send_alert(const char *alert_type, const char *message);
 
-/* Home Assistant Auto Discovery */
+/**
+ * @brief Home Assistant Auto Discovery
+ * @return ESP_OK on success
+ */
 esp_err_t mqtt_ftx_ha_discovery(void);
 
-/* Process incoming commands */
+/**
+ * @brief Process incoming commands
+ * @param topic MQTT topic
+ * @param payload Message payload
+ * @param[out] cmd Parsed command
+ * @param[out] value Command value
+ * @return ESP_OK on success
+ */
 esp_err_t mqtt_ftx_process_command(const char *topic, const char *payload, ftx_command_t *cmd, int *value);
 
-/* Deinitialize FTX MQTT module */
+/**
+ * @brief Process MQTT events (call periodically)
+ * @return ESP_OK on success
+ */
+esp_err_t mqtt_ftx_loop(void);
+
+/**
+ * @brief Check if MQTT is connected
+ * @return true if connected
+ */
+bool mqtt_ftx_is_connected(void);
+
+/**
+ * @brief Get MQTT connection status
+ * @return Current MQTT status
+ */
+mqtt_status_t mqtt_ftx_get_status(void);
+
+/**
+ * @brief Deinitialize FTX MQTT module
+ * @return ESP_OK on success
+ */
 esp_err_t mqtt_ftx_deinit(void);
 
 #ifdef __cplusplus

@@ -1,0 +1,170 @@
+# HTTPS Web Server Configuration for ThermoFlow
+# Implements SEC-018: Security Enhancement - HTTPS Implementation
+
+menu "HTTPS Web Server Configuration"
+
+    config WEB_SERVER_HTTPS_ENABLED
+        bool "Enable HTTPS"
+        default y
+        help
+            Enable HTTPS for secure web server communication.
+            This is HIGHLY RECOMMENDED for production use.
+            
+            When disabled, the server will run on unencrypted HTTP only.
+
+    config WEB_SERVER_HTTPS_PORT
+        int "HTTPS Port"
+        default 443
+        depends on WEB_SERVER_HTTPS_ENABLED
+        help
+            Port for HTTPS server.
+            Standard HTTPS port is 443.
+
+    config WEB_SERVER_HTTP_REDIRECT
+        bool "Enable HTTP to HTTPS Redirect"
+        default y
+        depends on WEB_SERVER_HTTPS_ENABLED
+        help
+            Start HTTP server on port 80 that redirects all requests to HTTPS.
+            This ensures clients automatically use secure connections.
+
+    config WEB_SERVER_HTTP_PORT
+        int "HTTP Port (for redirect)"
+        default 80
+        depends on WEB_SERVER_HTTPS_ENABLED && WEB_SERVER_HTTP_REDIRECT
+        help
+            Port for HTTP redirect server.
+            Standard HTTP port is 80.
+
+    choice WEB_SERVER_TLS_VERSION
+        prompt "Minimum TLS Version"
+        default WEB_SERVER_TLS_VERSION_1_3
+        depends on WEB_SERVER_HTTPS_ENABLED
+        help
+            Select minimum TLS version.
+            TLS 1.3 is recommended for best security.
+
+        config WEB_SERVER_TLS_VERSION_1_2
+            bool "TLS 1.2 (legacy compatibility)"
+            help
+                Allow TLS 1.2 connections (less secure but more compatible)
+
+        config WEB_SERVER_TLS_VERSION_1_3
+            bool "TLS 1.3 (recommended)"
+            help
+                Require TLS 1.3 for maximum security
+    endchoice
+
+    config WEB_SERVER_TLS_1_3_ONLY
+        bool "TLS 1.3 Only (no fallback)"
+        default n
+        depends on WEB_SERVER_HTTPS_ENABLED
+        help
+            Require TLS 1.3 and reject older versions.
+            More secure but may break compatibility with older clients.
+
+    config WEB_SERVER_ENABLE_MTLS
+        bool "Enable Mutual TLS (mTLS)"
+        default n
+        depends on WEB_SERVER_HTTPS_ENABLED
+        help
+            Require client certificates for authentication.
+            This provides strong mutual authentication.
+
+    config WEB_SERVER_ENABLE_HSTS
+        bool "Enable HTTP Strict Transport Security (HSTS)"
+        default y
+        depends on WEB_SERVER_HTTPS_ENABLED
+        help
+            Send HSTS header to instruct browsers to always use HTTPS.
+            Prevents SSL stripping attacks.
+
+    config WEB_SERVER_HSTS_MAX_AGE
+        int "HSTS Max Age (seconds)"
+        default 31536000
+        depends on WEB_SERVER_HTTPS_ENABLED && WEB_SERVER_ENABLE_HSTS
+        help
+            How long browsers should remember to use HTTPS.
+            Default is 1 year (31536000 seconds).
+            Range: 86400 (1 day) to 63072000 (2 years)
+
+    config WEB_SERVER_HSTS_PRELOAD
+        bool "Include HSTS Preload"
+        default n
+        depends on WEB_SERVER_HTTPS_ENABLED && WEB_SERVER_ENABLE_HSTS
+        help
+            Include the site in browser HSTS preload lists.
+            Only enable for production sites that always use HTTPS.
+
+    config WEB_SERVER_ENABLE_CSP
+        bool "Enable Content Security Policy"
+        default y
+        depends on WEB_SERVER_HTTPS_ENABLED
+        help
+            Send CSP header to prevent XSS and data injection attacks.
+
+    config WEB_SERVER_CSP_POLICY
+        string "Content Security Policy"
+        default "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self';"
+        depends on WEB_SERVER_HTTPS_ENABLED && WEB_SERVER_ENABLE_CSP
+        help
+            Content Security Policy string.
+            Default is restrictive - modify as needed for your application.
+
+    config WEB_SERVER_AUTO_PROVISION
+        bool "Auto-provision Certificates from EJBCA"
+        default y
+        depends on WEB_SERVER_HTTPS_ENABLED
+        help
+            Automatically request certificates from EJBCA-PKI on first boot.
+            Requires network connectivity and EJBCA server configuration.
+
+    config WEB_SERVER_EJBCA_URL
+        string "EJBCA Server URL"
+        default "https://ejbca.lttsweden.local:8443"
+        depends on WEB_SERVER_HTTPS_ENABLED && WEB_SERVER_AUTO_PROVISION
+        help
+            URL of the EJBCA-PKI server for certificate provisioning.
+
+    config WEB_SERVER_CERT_DEVICE_ID
+        string "Device ID for Certificate CN"
+        default ""
+        depends on WEB_SERVER_HTTPS_ENABLED
+        help
+            Common Name (CN) for the device certificate.
+            If empty, MAC address will be used as default.
+            Example: "ThermoFlow-001" or "ventilation-device-01"
+
+    config WEB_SERVER_CERT_VALIDITY_DAYS
+        int "Certificate Validity (days)"
+        default 365
+        depends on WEB_SERVER_HTTPS_ENABLED
+        help
+            Validity period for self-signed certificates.
+            EJBCA-issued certificates use CA policy instead.
+
+    config WEB_SERVER_CERT_RENEWAL_DAYS
+        int "Certificate Renewal Threshold (days)"
+        default 30
+        depends on WEB_SERVER_HTTPS_ENABLED
+        help
+            Renew certificate when this many days remain until expiry.
+            Allows time to address any renewal issues.
+
+    config WEB_SERVER_TLS_RX_BUFFER_SIZE
+        int "TLS RX Buffer Size"
+        default 4096
+        range 1024 16384
+        depends on WEB_SERVER_HTTPS_ENABLED
+        help
+            Size of TLS receive buffer.
+
+    config WEB_SERVER_TLS_TX_BUFFER_SIZE
+        int "TLS TX Buffer Size"
+        default 4096
+        range 1024 16384
+        depends on WEB_SERVER_HTTPS_ENABLED
+        help
+            Size of TLS transmit buffer.
+
+endmenu
