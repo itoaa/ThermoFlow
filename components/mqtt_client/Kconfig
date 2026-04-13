@@ -1,5 +1,6 @@
 # MQTT-TLS Configuration for ThermoFlow
 # Implements SEC-016: Critical Security Remediation
+# Implements SEC-030: MQTT Certificate Pinning (CVSS 5.8 -> Remediated)
 
 menu "MQTT-TLS Configuration"
 
@@ -60,13 +61,65 @@ menu "MQTT-TLS Configuration"
         help
             Verify broker certificate hostname matches configured host.
 
-    config MQTT_TLS_CERT_PINNING
-        bool "Enable Certificate Pinning"
-        default n
+    menu "Certificate Pinning (SEC-030)"
         depends on MQTT_TLS_ENABLED
-        help
-            Pin to specific certificate hash for additional security.
-            Requires the pinned certificate hash to be set at runtime.
+
+        config MQTT_TLS_CERT_PINNING
+            bool "Enable Certificate Pinning"
+            default n
+            help
+                Pin to specific certificate hash for additional security.
+                Requires the pinned certificate hash to be set at runtime.
+                
+                Certificate pinning provides an additional layer of security
+                by validating that the server's certificate matches a
+                pre-configured hash, protecting against rogue CA attacks.
+
+        choice MQTT_CERT_PINNING_MODE
+            prompt "Pinning Mode"
+            default MQTT_CERT_PINNING_OPTIONAL
+            depends on MQTT_TLS_CERT_PINNING
+            help
+                Select how certificate pinning should be enforced.
+
+            config MQTT_CERT_PINNING_OPTIONAL
+                bool "Optional (allow if no pin configured)"
+                help
+                    Pinning is only enforced if a pin hash is configured.
+                    Connections without pins are allowed.
+
+            config MQTT_CERT_PINNING_MANDATORY
+                bool "Mandatory (reject if no pin)"
+                help
+                    All connections must have certificate pinning configured.
+                    Connections without pins are rejected.
+
+            config MQTT_CERT_PINNING_REPORT_ONLY
+                bool "Report Only (log only, don't reject)"
+                help
+                    Pinning violations are logged but connections are still allowed.
+                    Use this for testing before enabling mandatory mode.
+        endchoice
+
+        config MQTT_CERT_PINNING_ALLOW_BACKUP
+            bool "Allow Backup Pin"
+            default y
+            depends on MQTT_TLS_CERT_PINNING
+            help
+                Enable support for a secondary/backup pinning hash.
+                This allows smooth certificate rotation without downtime.
+
+        config MQTT_CERT_PINNING_LOG_MISMATCH
+            bool "Log Pin Mismatch Details"
+            default y
+            depends on MQTT_TLS_CERT_PINNING
+            help
+                Log certificate pin mismatch events for security monitoring.
+                
+                WARNING: This logs hash values which could reveal
+                certificate information. Disable in high-security
+                environments after initial testing.
+    endmenu
 
     config MQTT_TLS_MTLS
         bool "Enable Client Certificate Authentication (mTLS)"

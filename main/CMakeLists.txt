@@ -23,4 +23,5 @@ idf_component_register(
         audit_log
         wifi_manager
         hardware_manager
+        ota_manager
 )
