@@ -6,6 +6,7 @@ idf_component_register(
         nvs_flash 
         esp-tls
         mbedtls
+        json
     PRIV_REQUIRES
         freertos
 )
