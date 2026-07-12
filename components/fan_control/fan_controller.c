@@ -22,12 +22,14 @@
  *   - Thread-safe state management
  */
 
-#include <string.h>                  /* memcpy */
-#include "fan_controller.h"           /* Public interface */
-#include "esp_log.h"                   /* ESP-IDF logging */
-#include "esp_timer.h"                 /* Timer functions */
-#include "freertos/FreeRTOS.h"         /* FreeRTOS core */
-#include "freertos/semphr.h"           /* Semaphores for thread safety */
+#include <string.h>
+#include "fan_controller.h"
+#include "thermoflow_config.h"
+#include "esp_log.h"
+#include "esp_timer.h"
+#include "driver/ledc.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 /* Logging tag - appears in log messages from this component */
 static const char *TAG = "FAN_CTRL";
@@ -70,9 +72,66 @@ static fan_controller_state_t s_fan_ctrl = {
     .mutex = NULL
 };
 
+static bool s_pwm_ready = false;
+
+static const uint8_t s_fan_gpios[FAN_MAX_COUNT] = { FAN_1_GPIO, FAN_2_GPIO };
+static const ledc_channel_t s_ledc_channels[FAN_MAX_COUNT] = {
+    LEDC_CHANNEL_0, LEDC_CHANNEL_1
+};
+
 /* Internal function prototypes */
 static void update_runtime(fan_id_t fan);
 static uint8_t calc_thermostat_speed(fan_id_t fan, float current_temp);
+static esp_err_t fan_pwm_init(void);
+static void fan_pwm_apply(fan_id_t fan, uint8_t speed_percent);
+
+static esp_err_t fan_pwm_init(void)
+{
+    ledc_timer_config_t timer = {
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .duty_resolution = LEDC_TIMER_8_BIT,
+        .timer_num = LEDC_TIMER_0,
+        .freq_hz = FAN_PWM_FREQ_HZ,
+        .clk_cfg = LEDC_AUTO_CLK,
+    };
+
+    esp_err_t err = ledc_timer_config(&timer);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    for (int i = 0; i < FAN_MAX_COUNT; i++) {
+        ledc_channel_config_t channel = {
+            .gpio_num = s_fan_gpios[i],
+            .speed_mode = LEDC_LOW_SPEED_MODE,
+            .channel = s_ledc_channels[i],
+            .timer_sel = LEDC_TIMER_0,
+            .duty = 0,
+            .hpoint = 0,
+        };
+
+        err = ledc_channel_config(&channel);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "LEDC channel %d config failed: %s", i, esp_err_to_name(err));
+            return err;
+        }
+    }
+
+    s_pwm_ready = true;
+    ESP_LOGI(TAG, "LEDC PWM initialized on GPIO %d and %d", FAN_1_GPIO, FAN_2_GPIO);
+    return ESP_OK;
+}
+
+static void fan_pwm_apply(fan_id_t fan, uint8_t speed_percent)
+{
+    if (!s_pwm_ready || fan < 0 || fan >= FAN_MAX_COUNT) {
+        return;
+    }
+
+    uint32_t duty = (uint32_t)speed_percent * FAN_PWM_MAX_DUTY / 100U;
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, s_ledc_channels[fan], duty);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, s_ledc_channels[fan]);
+}
 
 /**
  * @brief Initialize fan controller
@@ -111,6 +170,11 @@ esp_err_t fan_controller_init(void)
 
     /* Release mutex */
     xSemaphoreGive(s_fan_ctrl.mutex);
+
+    esp_err_t pwm_err = fan_pwm_init();
+    if (pwm_err != ESP_OK) {
+        ESP_LOGW(TAG, "PWM init failed — software-only fan control");
+    }
 
     ESP_LOGI(TAG, "Fan controller initialized - all fans OFF (fail-safe)");
     return ESP_OK;
@@ -209,6 +273,8 @@ esp_err_t fan_controller_set_speed(fan_id_t fan, uint8_t speed_percent)
     /* Store target speed */
     f->target_speed = speed_percent;
 
+    uint8_t applied_speed = 0;
+
     /* Apply fail-safe override */
     if (s_fan_ctrl.fail_safe_active) {
         f->speed_percent = 0;
@@ -216,8 +282,8 @@ esp_err_t fan_controller_set_speed(fan_id_t fan, uint8_t speed_percent)
     } else {
         f->speed_percent = speed_percent;
         f->mode = FAN_MODE_MANUAL;
+        applied_speed = speed_percent;
 
-        /* Log significant speed changes */
         if (speed_percent == 0 || speed_percent == 100) {
             ESP_LOGI(TAG, "Fan %d: Speed set to %d%%", fan, speed_percent);
         }
@@ -225,6 +291,7 @@ esp_err_t fan_controller_set_speed(fan_id_t fan, uint8_t speed_percent)
 
     xSemaphoreGive(s_fan_ctrl.mutex);
 
+    fan_pwm_apply(fan, applied_speed);
     return ESP_OK;
 }
 
@@ -486,6 +553,10 @@ esp_err_t fan_controller_enter_failsafe(const char *reason)
     }
 
     xSemaphoreGive(s_fan_ctrl.mutex);
+
+    for (int i = 0; i < FAN_MAX_COUNT; i++) {
+        fan_pwm_apply((fan_id_t)i, 0);
+    }
 
     ESP_LOGW(TAG, "FAIL-SAFE MODE ENTERED: %s", reason ? reason : "no reason");
 
