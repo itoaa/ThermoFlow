@@ -111,6 +111,11 @@ typedef struct {
 esp_err_t ota_manager_init(const ota_config_t *config);
 
 /**
+ * @brief Set Ed25519 public key for OTA signature verification
+ */
+esp_err_t ota_manager_set_public_key(const uint8_t *public_key, size_t len);
+
+/**
  * @brief Deinitialize OTA manager
  * @return ESP_OK on success
  */

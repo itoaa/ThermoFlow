@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "security_manager.c" "ed25519_impl.c"
+    SRCS "security_manager.c" "ed25519_impl.c" "monocypher.c"
     INCLUDE_DIRS "include"
     REQUIRES 
         mbedtls 
