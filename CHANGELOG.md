@@ -5,7 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **Note:** Changelog versions describe component and documentation milestones. The **running firmware version** is defined in `main/main.c` (currently **1.2.0**). For what is actually integrated and running, see [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md).
+> **Note:** Firmware version is defined in `include/thermoflow_version.h`.
+
+---
+
+## [1.3.0] - 2026-07-12
+
+### Added
+- Full `main.c` integration of web_server, MQTT, FTX, audit_log, rate_limiter, display
+- SHT40 hardware reading in sensor_manager
+- LEDC PWM fan output
+- WiFi credential AES-256-CBC encryption
+- Ed25519 signatures via Monocypher
+- OTA via esp_https_ota
+- SR-010 operating modes (AC / heat exchanger / FTX)
+- SSD1306 display driver
+- heat_recovery Unity tests, GitHub Actions CI
+- SBOM and threat model documents
+
+### Security
+- Removed private signing key from repository
+- Extended `.gitignore` for secrets
+
+### Removed
+- PlatformIO `library.json` files
+- Duplicate stub headers in `include/`
 
 ---
 

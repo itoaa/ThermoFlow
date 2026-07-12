@@ -10,6 +10,7 @@
 void test_sht4x_sensor(void);
 void test_fan_controller(void);
 void test_anti_condensation(void);
+void test_heat_recovery_suite(void);
 
 static const char *TAG = "TEST";
 
@@ -33,6 +34,7 @@ void app_main(void)
     test_sht4x_sensor();
     test_fan_controller();
     test_anti_condensation();
+    test_heat_recovery_suite();
     
     UNITY_END();
     

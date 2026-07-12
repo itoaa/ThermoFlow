@@ -1,6 +1,6 @@
 # ThermoFlow - ESP32-S3 Climate Monitoring and Control System
 
-**Firmware version:** 1.2.0 (definierad i `main/main.c`)  
+**Firmware version:** 1.3.0 (`include/thermoflow_version.h`)
 **Repository:** https://github.com/itoaa/ThermoFlow
 
 ## Overview
@@ -11,36 +11,26 @@ ThermoFlow is an ESP32-S3 based system for monitoring temperature and humidity, 
 - **DIY heat exchangers** — fan control based on conditions
 - **Mini-FTX** — ventilation with heat recovery calculations
 
-> **Important:** Many components exist as separate modules but are **not yet wired into `main.c`**. See [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for the honest status and [docs/TODO.md](docs/TODO.md) for everything still to do.
+> Firmware 1.3.0 integrerar alla kärnkomponenter i `main.c`. Kvarvarande arbete: HTTPS i produktion, MQTT/OTA URL-konfiguration, HIL-test. Se [docs/TODO.md](docs/TODO.md).
 
 ---
 
-## What works today (firmware 1.2.0)
-
-These features are **initialized and run** from `main.c`:
+## What works today (firmware 1.3.0)
 
 | Feature | Status |
 |---------|--------|
-| NVS / configuration storage | ✅ Runs |
-| Hardware detection (I2C probe for SHT40/OLED) | ✅ Runs |
-| Simulation mode (no hardware required) | ✅ Runs |
-| WiFi manager (AP setup or connect to saved network) | ✅ Runs |
-| Sensor manager | ⚠️ Runs, but returns **simulated** data |
-| Fan controller | ⚠️ Runs, **software state only** (no PWM output) |
-| Anti-condensation monitoring | ✅ Runs |
-| OTA manager | ⚠️ Init only — no actual firmware download |
-
-### Not started from `main.c` (code exists elsewhere)
-
-| Feature | Status |
-|---------|--------|
-| Web interface (SPA/PWA) | ❌ Not started — see `components/web_server/` |
-| MQTT / Home Assistant | ❌ Not started — see `components/mqtt_client/` |
-| Mini-FTX / heat recovery | ❌ Not started — see `components/heat_recovery/` |
-| OLED display | ❌ Stub only |
-| Audit log, rate limiter | ❌ Not started |
-| HTTPS | ⚠️ Falls back to HTTP if started manually |
-| OTA download / rollback | ❌ Stub |
+| Hardware detection + simulation mode | ✅ |
+| SHT40 sensor reading (hardware mode) | ✅ |
+| PWM fan control (LEDC GPIO 10/11) | ✅ |
+| WiFi manager + encrypted credentials | ✅ |
+| HTTP web server + SPA | ✅ |
+| MQTT / FTX (when broker configured) | ✅ |
+| Heat recovery / FTX calculations | ✅ |
+| Anti-condensation (per operating mode) | ✅ |
+| OTA via esp_https_ota + Ed25519 | ✅ |
+| Audit log + rate limiter | ✅ |
+| SSD1306 OLED (when detected) | ✅ |
+| HTTPS | ⚠️ Falls back to HTTP |
 | MicroSD logging | ❌ Not implemented |
 
 ---

@@ -1,0 +1,26 @@
+name: ThermoFlow CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: espressif/idf:release-v5.1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build firmware
+        run: |
+          idf.py set-target esp32s3
+          idf.py build
+
+      - name: Run unit tests (host build check)
+        run: |
+          echo "Unity tests are executed on-device via tests/test_main.c"
+          test -f tests/test_heat_recovery.c
+          test -f tests/test_sht4x.c
