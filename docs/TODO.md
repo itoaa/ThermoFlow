@@ -22,13 +22,8 @@ Se även [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) för detaljerad ko
 ## 1. Kritiska åtgärder (säkerhet)
 
 ### 🔴 Privata nycklar i repot
-- **Problem:** `keys/secure_boot_signing_key.pem` (privat nyckel) ligger i det publika repot.
-- **Åtgärd:**
-  1. Rotera/ogiltigförklara nyckeln omedelbart
-  2. Ta bort filen från git-historiken (`git filter-repo` eller BFG)
-  3. Lägg till `keys/`, `*.pem`, `*.key` i `.gitignore`
-  4. Behåll endast publika nycklar eller `.example`-filer i repot
-  5. Dokumentera nyckelgenerering i `docs/SECURE_BOOT_PROVISIONING.md`
+- **Status:** ✅ Privat nyckel borttagen från working tree; `.gitignore` och `keys/README.md` tillagda (2026-07-12)
+- **Kvarstår:** Rensa nyckeln ur git-historiken (`git filter-repo` eller BFG) och rotera nyckel om den exponerats publikt
 
 ### 🔴 Ed25519-signering är placeholder
 - **Fil:** `components/security_utils/ed25519_impl.c`

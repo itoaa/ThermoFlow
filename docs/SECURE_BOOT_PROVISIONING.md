@@ -11,19 +11,30 @@ This document describes the provisioning procedure for ThermoFlow ESP32-S3 devic
 - ESP32-S3 development board or module
 - Access to secure key storage for backup
 
-## Files Generated
+## Files
 
-- `keys/secure_boot_signing_key.pem` - Private signing key (3072-bit RSA)
-- `keys/secure_boot_signing_key_public.pem` - Public key
+| File | In repository | Purpose |
+|------|---------------|---------|
+| `keys/secure_boot_signing_key.pem` | **No** (gitignored) | Private signing key (3072-bit RSA) — generate locally |
+| `keys/secure_boot_signing_key_public.pem` | Yes | Public verification key |
+| `keys/README.md` | Yes | Key generation instructions |
+
+Generate keys locally:
+
+```bash
+openssl genrsa -out keys/secure_boot_signing_key.pem 3072
+openssl rsa -in keys/secure_boot_signing_key.pem -pubout -out keys/secure_boot_signing_key_public.pem
+```
 
 ## ⚠️ CRITICAL: Key Security
 
-**The private signing key (`secure_boot_signing_key.pem`) must be stored securely.**
+**The private signing key must never be committed to version control.**
 
 - Keep it offline when possible
 - Use hardware security module (HSM) for production
-- Never commit to version control
+- Listed in `.gitignore` — verify with `git status` before every commit
 - Make encrypted backups in multiple secure locations
+- If a key was previously exposed: rotate immediately and purge git history
 
 ## Provisioning Steps
 

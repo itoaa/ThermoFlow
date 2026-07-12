@@ -4,3 +4,17 @@ sdkconfig.*
 *.elf
 *.bin
 *.map
+
+# Secrets — never commit private keys or credentials
+keys/*.pem
+keys/*.key
+!keys/*_public.pem
+!keys/*.example
+*.pem
+!data/cacert.pem
+
+# Local tooling
+.vscode/
+.idea/
+*.swp
+managed_components/
