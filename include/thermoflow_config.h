@@ -13,12 +13,20 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "thermoflow_version.h"
 
-// Version information
-#define THERMOFLOW_VERSION_MAJOR      1
-#define THERMOFLOW_VERSION_MINOR      0
-#define THERMOFLOW_VERSION_PATCH      0
-#define THERMOFLOW_VERSION_STRING     "1.0.0"
+/**
+ * @brief Operating mode affects fan behaviour at high humidity (SR-010)
+ */
+typedef enum {
+    TF_MODE_AC_MONITOR = 0,      /**< Alert only — fans unchanged */
+    TF_MODE_HEAT_EXCHANGER,      /**< High RH → fans OFF (condensation protection) */
+    TF_MODE_MINI_FTX,            /**< High RH → max ventilation (moisture removal) */
+} thermoflow_mode_t;
+
+#ifndef THERMOFLOW_DEFAULT_MODE
+#define THERMOFLOW_DEFAULT_MODE   TF_MODE_HEAT_EXCHANGER
+#endif
 
 // Hardware configuration
 #define THERMOFLOW_USE_DISPLAY        1   // Set to 0 to disable OLED
