@@ -1,10 +1,7 @@
-# ThermoFlow Main Application - v1.1.0
-# Added hardware_manager for auto-detection
-
 idf_component_register(
     SRCS "main.c"
-    INCLUDE_DIRS "."
-    REQUIRES 
+    INCLUDE_DIRS "." "${CMAKE_SOURCE_DIR}/include"
+    REQUIRES
         freertos
         esp_event
         esp_wifi
@@ -24,4 +21,5 @@ idf_component_register(
         wifi_manager
         hardware_manager
         ota_manager
+        heat_recovery
 )

@@ -1,99 +1,61 @@
 /**
  * @file main.c
  * @brief ThermoFlow - ESP32-S3 Climate Monitoring and Control System
- * 
- * Main application entry point for the climate monitoring system.
- * Implements IEC 62443 SL-2 security level compliance.
- * 
- * Supports "bare" ESP32 operation - detects hardware at boot and
- * gracefully degrades to simulation mode if no sensors connected.
- * 
- * @author Ola Andersson
- * @version 1.2.0
- * @date 2026-04-13
- * 
- * @copyright Copyright (c) 2026
- * 
- * @section changelog Change Log
- * - 1.2.0 (2026-04-13): Added OTA update support (DEV-001)
- *   - Secure OTA with HTTPS, signature verification
- *   - Anti-rollback protection
- *   - Automatic rollback on failed update
- * - 1.1.0 (2026-04-09): Added hardware detection and simulation mode
- *   - Auto-detect SHT40 sensors, display, and fans
- *   - Runs without hardware for testing/onboarding
- *   - Shows "SIMULATION MODE" in web interface
- * - 1.0.0 (2026-03-22): Initial release with core functionality
- *   - Fan control with fail-safe
- *   - Anti-condensation protection
- *   - Simulated sensor readings (placeholder for hardware)
  */
 
 #include <stdio.h>
 #include <string.h>
-#include <freertos/FreeRTOS.h>      /* FreeRTOS core functions */
-#include <freertos/task.h>             /* Task management */
-#include <freertos/semphr.h>          /* Semaphore/mutex support */
-#include <esp_log.h>                  /* ESP-IDF logging */
-#include <esp_system.h>               /* System info, watchdog */
-#include <esp_chip_info.h>            /* Chip info (cores, revision) */
-#include <esp_random.h>               /* Hardware RNG */
-#include <esp_task_wdt.h>             /* Task watchdog timer */
-#include <nvs_flash.h>               /* Non-volatile storage */
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
+#include <esp_log.h>
+#include <esp_system.h>
+#include <esp_chip_info.h>
+#include <esp_task_wdt.h>
+#include <nvs_flash.h>
 
-#include "fan_controller.h"           /* PWM fan control interface */
-#include "anti_condensation.h"          /* RH monitoring and alerts */
-#include "wifi_manager.h"             /* WiFi configuration and AP mode */
-#include "hardware_manager.h"           /* Hardware detection */
-#include "sensor_manager.h"           /* Sensor abstraction layer */
-#include "ota_manager.h"              /* OTA update manager (DEV-001) */
+#include "thermoflow_version.h"
+#include "thermoflow_config.h"
+#include "fan_controller.h"
+#include "anti_condensation.h"
+#include "wifi_manager.h"
+#include "hardware_manager.h"
+#include "sensor_manager.h"
+#include "ota_manager.h"
+#include "web_server.h"
+#include "heat_recovery.h"
+#include "mqtt_ftx.h"
+#include "security_manager.h"
+#include "audit_log.h"
+#include "rate_limiter.h"
+#include "display_manager.h"
 
-/* Compile-time version string */
-#define THERMOFLOW_VERSION    "1.2.0"
-#define THERMOFLOW_VERSION_MAJOR  1
-#define THERMOFLOW_VERSION_MINOR  2
-#define THERMOFLOW_VERSION_PATCH  0
-
-/* Security version for anti-rollback (DEV-001) */
-#define THERMOFLOW_SECURITY_VERSION 1
-
-/* Logging tag - appears in all log messages from this file */
 static const char *TAG = "THERMOFLOW";
 
-/* Task configuration constants */
-#define CONTROL_TASK_STACK_SIZE    4096u     /* bytes */
-#define CONTROL_TASK_PRIORITY      5         /* 1-24, higher = more urgent */
-#define CONTROL_TASK_CORE          tskNO_AFFINITY  /* Run on any core */
-#define OTA_MONITOR_TASK_STACK_SIZE 4096u    /* bytes */
-#define OTA_MONITOR_TASK_PRIORITY  3         /* Lower priority than control */
-#define MAIN_LOOP_INTERVAL_MS      5000u     /* 5 seconds between status logs */
-#define CONTROL_LOOP_INTERVAL_MS   1000u     /* 1 second control loop */
-#define OTA_MONITOR_INTERVAL_MS    30000u    /* 30 second OTA check interval */
+#define CONTROL_TASK_STACK_SIZE       6144u
+#define CONTROL_TASK_PRIORITY         5
+#define OTA_MONITOR_TASK_STACK_SIZE   4096u
+#define OTA_MONITOR_TASK_PRIORITY     3
+#define MAIN_LOOP_INTERVAL_MS         5000u
+#define CONTROL_LOOP_INTERVAL_MS      1000u
+#define OTA_MONITOR_INTERVAL_MS       30000u
+#define OTA_HEALTH_DELAY_MS           120000u
 
-/* Sensor simulation constants (used when no hardware detected) */
-#define SIM_MIN_TEMP_C      15.0f    /* Minimum simulated temperature */
-#define SIM_MAX_TEMP_C      25.0f    /* Maximum simulated temperature */
-#define SIM_MIN_RH_PERCENT  30.0f    /* Minimum simulated humidity */
-#define SIM_MAX_RH_PERCENT  90.0f    /* Maximum simulated humidity */
+#define SIM_MIN_TEMP_C                15.0f
+#define SIM_MAX_TEMP_C                25.0f
 
-/**
- * @brief Global mutex for thread-safe sensor data access
- */
 static SemaphoreHandle_t g_sensor_mutex = NULL;
+static thermoflow_mode_t g_operating_mode = THERMOFLOW_DEFAULT_MODE;
+static heat_recovery_data_t g_ftx_data = {0};
+static bool g_ftx_initialized = false;
+static bool g_mqtt_started = false;
+static bool g_ota_health_ok = false;
+static uint32_t g_boot_time_ms = 0;
 
-/**
- * @brief Initialize Non-Volatile Storage
- * 
- * Required for persisting configuration and calibration data.
- * Handles first-boot initialization automatically.
- * 
- * @return ESP_OK on success, error code otherwise
- */
 static esp_err_t init_nvs(void)
 {
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        /* NVS partition truncated or version mismatch - erase and retry */
         ESP_LOGW(TAG, "NVS partition needs erase, reformatting...");
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
@@ -101,22 +63,13 @@ static esp_err_t init_nvs(void)
     return ret;
 }
 
-/**
- * @brief OTA event callback
- * 
- * Called when OTA state changes (DEV-001)
- * 
- * @param state Current OTA state
- * @param error Error code (if any)
- * @param user_data User data pointer
- */
 static void ota_event_callback(ota_state_t state, ota_error_t error, void *user_data)
 {
     (void)user_data;
-    
+
     switch (state) {
         case OTA_STATE_DOWNLOADING:
-            ESP_LOGI(TAG, "OTA: Downloading update...");
+            audit_log_event(AUDIT_EVENT_OTA_START, AUDIT_SEVERITY_INFO, "OTA download started");
             break;
         case OTA_STATE_VERIFYING:
             ESP_LOGI(TAG, "OTA: Verifying firmware...");
@@ -128,399 +81,387 @@ static void ota_event_callback(ota_state_t state, ota_error_t error, void *user_
             ESP_LOGI(TAG, "OTA: Applying update...");
             break;
         case OTA_STATE_ROLLBACK:
-            ESP_LOGI(TAG, "OTA: Rolling back...");
+            audit_log_event(AUDIT_EVENT_OTA_FAILURE, AUDIT_SEVERITY_WARNING, "OTA rollback");
             break;
         case OTA_STATE_ERROR:
-            ESP_LOGE(TAG, "OTA: Error - %s", ota_manager_error_string(error));
+            audit_log_event(AUDIT_EVENT_OTA_FAILURE, AUDIT_SEVERITY_ERROR,
+                            "OTA error: %s", ota_manager_error_string(error));
             break;
         default:
             break;
     }
 }
 
-/**
- * @brief Initialize OTA subsystem
- * 
- * DEV-001: OTA Implementation
- * Sets up secure OTA with signature verification and rollback protection.
- * 
- * @return ESP_OK on success
- */
 static esp_err_t init_ota(void)
 {
-    ESP_LOGI(TAG, "Initializing OTA manager...");
-    
     ota_config_t ota_config = {
         .use_https = true,
         .verify_signature = true,
         .verify_hash = true,
         .enable_anti_rollback = true,
         .min_security_version = THERMOFLOW_SECURITY_VERSION,
-        .progress_cb = NULL,
+        .check_interval_ms = OTA_CHECK_INTERVAL_MS,
+        .security_version = THERMOFLOW_SECURITY_VERSION,
+        .auto_rollback = true,
         .event_cb = ota_event_callback,
-        .user_data = NULL,
-        .ca_cert = NULL,  /* Will use default certificate bundle */
-        .ca_cert_len = 0,
-        .use_certificate_pinning = false,
     };
-    
+
+    strncpy(ota_config.update_url, OTA_SERVER_URL, sizeof(ota_config.update_url) - 1);
+
     esp_err_t ret = ota_manager_init(&ota_config);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "OTA manager init failed: %s", esp_err_to_name(ret));
         return ret;
     }
-    
-    /* Check if we booted from a pending OTA update */
-    ota_status_t status;
-    ret = ota_manager_get_status(&status);
-    if (ret == ESP_OK && status.can_rollback) {
-        /* This is first boot after OTA update */
-        ESP_LOGI(TAG, "OTA: First boot after update, validating...");
-        
-        /* In a real implementation, we would verify:
-         * - All subsystems started correctly
-         * - Sensors are reading correctly
-         * - Network connectivity works
-         * Then mark as valid
-         */
-        
-        /* Mark firmware as valid (prevents rollback) */
-        ret = ota_manager_mark_valid();
-        if (ret == ESP_OK) {
-            ESP_LOGI(TAG, "OTA: Current firmware marked as valid");
-        } else {
-            ESP_LOGW(TAG, "OTA: Failed to mark valid: %s", esp_err_to_name(ret));
-        }
+
+    ota_status_t status = {0};
+    ota_manager_get_status(&status);
+
+    if (status.can_rollback) {
+        ESP_LOGI(TAG, "OTA: Pending validation after update (deferred %lu ms)",
+                 (unsigned long)OTA_HEALTH_DELAY_MS);
     }
-    
-    /* Log OTA status */
-    ESP_LOGI(TAG, "OTA manager initialized:");
-    ESP_LOGI(TAG, "  Current partition: %s", status.partition_label);
-    ESP_LOGI(TAG, "  Rollback possible: %s", status.can_rollback ? "yes" : "no");
-    ESP_LOGI(TAG, "  Security version: %lu", (unsigned long)THERMOFLOW_SECURITY_VERSION);
-    
+
     return ESP_OK;
 }
 
-/**
- * @brief Main control loop task
- * 
- * Runs continuously to:
- * - Read sensor values (from hardware or simulation)
- * - Check condensation risk
- * - Adjust fan speeds based on conditions
- * - Log status periodically
- * 
- * Designed to be thread-safe and resilient to errors.
- * 
- * @param[in] pvParameters Task parameters (unused)
- */
+static void populate_ftx_from_sensors(const sensor_manager_data_t *sensors, heat_recovery_data_t *ftx)
+{
+    if (!sensors || !ftx) {
+        return;
+    }
+
+    if (sensors->num_sensors >= 4 && sensors->valid[3]) {
+        ftx->outdoor_temp = sensors->temperature[3];
+        ftx->outdoor_rh = sensors->humidity[3];
+    }
+    if (sensors->num_sensors >= 1 && sensors->valid[0]) {
+        ftx->supply_temp = sensors->temperature[0];
+        ftx->supply_rh = sensors->humidity[0];
+    }
+    if (sensors->num_sensors >= 2 && sensors->valid[1]) {
+        ftx->extract_temp = sensors->temperature[1];
+        ftx->extract_rh = sensors->humidity[1];
+    }
+    if (sensors->num_sensors >= 3 && sensors->valid[2]) {
+        ftx->exhaust_temp = sensors->temperature[2];
+        ftx->exhaust_rh = sensors->humidity[2];
+    }
+
+    ftx->airflow_supply_m3h = 120.0f;
+    ftx->airflow_exhaust_m3h = 120.0f;
+    ftx->last_sensor_update_ms = esp_log_timestamp();
+}
+
+static void apply_fan_policy(float temp_c, float rh_percent, uint8_t *fan1_speed, uint8_t *fan2_speed)
+{
+    *fan1_speed = 0;
+    *fan2_speed = 0;
+
+    if (!hardware_is_detected(HW_COMPONENT_FAN_1)) {
+        return;
+    }
+
+    bool condensation = anti_condensation_is_active();
+
+    switch (g_operating_mode) {
+        case TF_MODE_AC_MONITOR:
+            if (!condensation) {
+                *fan1_speed = 0;
+            }
+            break;
+
+        case TF_MODE_HEAT_EXCHANGER:
+            if (condensation) {
+                *fan1_speed = 0;
+                fan_controller_enter_failsafe("SR-010 high RH");
+            } else {
+                fan_controller_exit_failsafe();
+                *fan1_speed = fan_controller_calc_speed_from_temp(temp_c, 20.0f, SIM_MIN_TEMP_C, SIM_MAX_TEMP_C);
+                if (*fan1_speed < 10) {
+                    *fan1_speed = 10;
+                }
+                if (*fan1_speed > 60) {
+                    *fan1_speed = 60;
+                }
+            }
+            break;
+
+        case TF_MODE_MINI_FTX:
+        default:
+            if (g_ftx_initialized) {
+                uint8_t recommended = ftx_recommend_fan_speed_hysteresis(&g_ftx_data,
+                                                                          fan_controller_get_speed(FAN_1));
+                ftx_calculate_max_safe_speed(&g_ftx_data, recommended);
+                *fan1_speed = g_ftx_data.fan_speed_current;
+                if (condensation) {
+                    *fan1_speed = 100;
+                }
+            } else if (condensation) {
+                *fan1_speed = 100;
+            } else {
+                *fan1_speed = fan_controller_calc_speed_from_temp(temp_c, 20.0f, SIM_MIN_TEMP_C, SIM_MAX_TEMP_C);
+            }
+            break;
+    }
+
+    if (hardware_is_detected(HW_COMPONENT_FAN_2)) {
+        *fan2_speed = *fan1_speed;
+    }
+}
+
+static void publish_mqtt_if_connected(void)
+{
+    if (!g_mqtt_started || !mqtt_ftx_is_connected()) {
+        return;
+    }
+
+    if (!ftx_check_rate_limit(g_ftx_data.last_publish_ms, esp_log_timestamp())) {
+        return;
+    }
+
+    ftx_sensor_data_t sensors = {
+        .outdoor_temp = g_ftx_data.outdoor_temp,
+        .outdoor_rh = g_ftx_data.outdoor_rh,
+        .supply_temp = g_ftx_data.supply_temp,
+        .supply_rh = g_ftx_data.supply_rh,
+        .exhaust_temp = g_ftx_data.exhaust_temp,
+        .exhaust_rh = g_ftx_data.exhaust_rh,
+        .extract_temp = g_ftx_data.extract_temp,
+        .extract_rh = g_ftx_data.extract_rh,
+    };
+
+    ftx_efficiency_data_t efficiency = {
+        .efficiency_percent = g_ftx_data.efficiency_percent,
+        .power_recovered_w = g_ftx_data.energy_recovery_w,
+        .airflow_m3h = g_ftx_data.airflow_supply_m3h,
+    };
+
+    ftx_status_flags_t status = {
+        .frost_protection_active = g_ftx_data.frost_protection_active,
+        .bypass_active = g_ftx_data.bypass_active,
+        .high_humidity_alert = g_ftx_data.condensation_risk,
+    };
+
+    mqtt_ftx_publish_full_state(&sensors, &efficiency, &status);
+    g_ftx_data.last_publish_ms = esp_log_timestamp();
+}
+
+static void try_start_mqtt(void)
+{
+    if (g_mqtt_started) {
+        mqtt_ftx_loop();
+        return;
+    }
+
+    if (!wifi_manager_is_connected()) {
+        return;
+    }
+
+    if (MQTT_BROKER_DEFAULT[0] == '\0') {
+        return;
+    }
+
+    esp_err_t ret = mqtt_ftx_configure_tls(MQTT_BROKER_DEFAULT, MQTT_PORT_DEFAULT, false);
+    if (ret == ESP_OK) {
+        ret = mqtt_ftx_connect();
+    }
+
+    if (ret == ESP_OK) {
+        g_mqtt_started = true;
+        audit_log_event(AUDIT_EVENT_MQTT_CONNECT, AUDIT_SEVERITY_INFO, "MQTT connected");
+        mqtt_ftx_ha_discovery();
+    }
+}
+
 static void control_task(void *pvParameters)
 {
-    (void)pvParameters;  /* Unused parameter */
-    
-    ESP_LOGI(TAG, "Control task started on core %d", xPortGetCoreID());
-    
-    /* Add task to watchdog - ensures task is responsive */
+    (void)pvParameters;
+
+    ESP_LOGI(TAG, "Control task started");
     ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
-    
-    /* Current sensor readings */
+
     float temp_c = 20.0f;
     float rh_percent = 50.0f;
-    
-    /* Control loop */
+
     while (1) {
-        /* Feed watchdog to prevent reset */
         ESP_ERROR_CHECK(esp_task_wdt_reset());
-        
-        /* Read sensor data (hardware or simulated) */
+
         sensor_manager_data_t sensor_data;
         esp_err_t err = sensor_manager_read_all(&sensor_data);
-        
-        if (err == ESP_OK && sensor_data.num_sensors > 0 && sensor_data.valid[0]) {
-            /* Use first valid sensor data */
-            temp_c = sensor_data.temperature[0];
-            rh_percent = sensor_data.humidity[0];
-        } else {
-            ESP_LOGW(TAG, "Failed to read sensors: %s", esp_err_to_name(err));
-        }
-        
-        /* Thread-safe sensor data update */
-        if (g_sensor_mutex != NULL) {
-            if (xSemaphoreTake(g_sensor_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                /* In a real implementation, update global sensor struct here */
-                xSemaphoreGive(g_sensor_mutex);
+
+        if (err == ESP_OK && sensor_data.num_sensors > 0) {
+            for (int i = 0; i < sensor_data.num_sensors; i++) {
+                if (sensor_data.valid[i]) {
+                    temp_c = sensor_data.temperature[i];
+                    rh_percent = sensor_data.humidity[i];
+                    break;
+                }
             }
         }
-        
-        /* Check condensation risk (IEC 62443 SR-010) */
-        err = anti_condensation_check(rh_percent, temp_c);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "Anti-condensation check failed: %s", esp_err_to_name(err));
+
+        if (g_sensor_mutex && xSemaphoreTake(g_sensor_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            sensor_manager_update_data(&sensor_data);
+            xSemaphoreGive(g_sensor_mutex);
         }
-        
-        /* Adjust fan speed based on temperature and condensation risk */
-        /* Only if fans are detected - otherwise just log */
-        if (hardware_is_detected(HW_COMPONENT_FAN_1)) {
-            if (anti_condensation_is_active()) {
-                /* High condensation risk - maximum ventilation */
-                fan_controller_set_mode(FAN_1, FAN_MODE_MANUAL);
-                fan_controller_set_speed(FAN_1, 100);
-                ESP_LOGW(TAG, "CONDENSATION ALERT: Fans at 100%% (RH=%.1f%%)", rh_percent);
-            } else {
-                /* Normal operation - moderate fan speed based on temp */
-                uint8_t fan_speed = (uint8_t)((temp_c - SIM_MIN_TEMP_C) / 
-                                             (SIM_MAX_TEMP_C - SIM_MIN_TEMP_C) * 50);
-                if (fan_speed < 10) fan_speed = 10;  /* Minimum 10% */
-                if (fan_speed > 60) fan_speed = 60; /* Normal max 60% */
-                fan_controller_set_mode(FAN_1, FAN_MODE_MANUAL);
-                fan_controller_set_speed(FAN_1, fan_speed);
-            }
-        } else {
-            /* No fans detected - log what we would do */
-            if (anti_condensation_is_active()) {
-                ESP_LOGW(TAG, "CONDENSATION ALERT: Would set fans to 100%% (RH=%.1f%%) [NO FANS]", rh_percent);
-            }
+
+        anti_condensation_check(rh_percent, temp_c);
+
+        if (g_ftx_initialized) {
+            populate_ftx_from_sensors(&sensor_data, &g_ftx_data);
+            ftx_update(&g_ftx_data);
+            web_server_update_ftx_data(&g_ftx_data);
         }
-        
-        /* Run WiFi manager */
+
+        uint8_t fan1 = 0;
+        uint8_t fan2 = 0;
+        apply_fan_policy(temp_c, rh_percent, &fan1, &fan2);
+
+        if (hardware_is_detected(HW_COMPONENT_FAN_1) && !fan_controller_is_failsafe()) {
+            fan_controller_set_mode(FAN_1, FAN_MODE_MANUAL);
+            fan_controller_set_speed(FAN_1, fan1);
+        }
+        if (hardware_is_detected(HW_COMPONENT_FAN_2) && !fan_controller_is_failsafe()) {
+            fan_controller_set_mode(FAN_2, FAN_MODE_MANUAL);
+            fan_controller_set_speed(FAN_2, fan2);
+        }
+
+        if (hardware_is_detected(HW_COMPONENT_OLED_DISPLAY)) {
+            display_sensor_data_t display_data = {0};
+            display_data.num_sensors = sensor_data.num_sensors;
+            for (int i = 0; i < sensor_data.num_sensors && i < 4; i++) {
+                display_data.temp[i] = sensor_data.temperature[i];
+                display_data.humidity[i] = sensor_data.humidity[i];
+                display_data.valid[i] = sensor_data.valid[i];
+            }
+            display_update_sensors(&display_data);
+        }
+
         wifi_manager_run();
-        
-        /* Log status periodically */
-        static uint32_t last_log_time = 0;
-        uint32_t now = xTaskGetTickCount();
-        if ((now - last_log_time) * portTICK_PERIOD_MS >= MAIN_LOOP_INTERVAL_MS) {
-            if (hardware_is_simulation_mode()) {
-                ESP_LOGI(TAG, "[SIMULATION] Temp=%.1f°C, RH=%.1f%%, CondAlert=%s",
-                         temp_c, rh_percent,
-                         anti_condensation_is_active() ? "YES" : "no");
-            } else {
-                uint8_t fan_speed = hardware_is_detected(HW_COMPONENT_FAN_1) ? 
-                                    fan_controller_get_speed(FAN_1) : 0;
-                ESP_LOGI(TAG, "[HARDWARE] Temp=%.1f°C, RH=%.1f%%, Fan=%u%%, CondAlert=%s",
-                         temp_c, rh_percent, fan_speed,
-                         anti_condensation_is_active() ? "YES" : "no");
+        try_start_mqtt();
+        publish_mqtt_if_connected();
+
+        if (!g_ota_health_ok &&
+            (esp_log_timestamp() - g_boot_time_ms) >= OTA_HEALTH_DELAY_MS &&
+            sensor_data.num_sensors > 0) {
+            ota_status_t status;
+            if (ota_manager_get_status(&status) == ESP_OK && status.can_rollback) {
+                if (ota_manager_mark_valid() == ESP_OK) {
+                    audit_log_event(AUDIT_EVENT_OTA_COMPLETE, AUDIT_SEVERITY_INFO,
+                                    "Firmware marked valid after health check");
+                }
             }
+            g_ota_health_ok = true;
+        }
+
+        static uint32_t last_log_time = 0;
+        uint32_t now = esp_log_timestamp();
+        if (now - last_log_time >= MAIN_LOOP_INTERVAL_MS) {
+            ESP_LOGI(TAG, "Temp=%.1fC RH=%.1f%% Fan=%u%% Mode=%d Cond=%s FTX=%.1f%%",
+                     temp_c, rh_percent, fan1, (int)g_operating_mode,
+                     anti_condensation_is_active() ? "YES" : "no",
+                     g_ftx_data.efficiency_percent);
             last_log_time = now;
         }
-        
-        /* Yield to other tasks - 1 second control loop */
+
         vTaskDelay(pdMS_TO_TICKS(CONTROL_LOOP_INTERVAL_MS));
     }
 }
 
-/**
- * @brief OTA monitoring task
- * 
- * DEV-001: OTA Implementation
- * Periodically checks for available updates and manages OTA state.
- * 
- * @param[in] pvParameters Task parameters (unused)
- */
 static void ota_monitor_task(void *pvParameters)
 {
     (void)pvParameters;
-    
-    ESP_LOGI(TAG, "OTA monitor task started");
-    
-    /* Wait for system to fully initialize */
-    vTaskDelay(pdMS_TO_TICKS(60000));  /* 1 minute delay */
-    
+
+    vTaskDelay(pdMS_TO_TICKS(60000));
+
     while (1) {
-        /* Check OTA status */
-        ota_status_t status;
-        esp_err_t ret = ota_manager_get_status(&status);
-        
-        if (ret == ESP_OK) {
-            /* Check if update is available */
-            if (status.state == OTA_STATE_IDLE) {
-                /* Could check update server here */
-                /* For now, just log status */
-            } else if (status.state == OTA_STATE_READY) {
-                ESP_LOGI(TAG, "OTA: Update ready to apply");
-                /* Application could auto-apply or wait for user confirmation */
-            } else if (status.state == OTA_STATE_ERROR) {
-                ESP_LOGW(TAG, "OTA: Error state - %s", 
-                         ota_manager_error_string(status.last_error));
-                /* Reset error state */
-                ota_manager_reset();
+        if (wifi_manager_is_connected() && OTA_SERVER_URL[0] != '\0') {
+            esp_err_t ret = ota_manager_check_for_update();
+            if (ret == ESP_OK) {
+                ota_manager_start_update();
             }
         }
-        
-        /* Sleep until next check */
+
+        ota_status_t status;
+        if (ota_manager_get_status(&status) == ESP_OK && status.state == OTA_STATE_ERROR) {
+            ota_manager_reset();
+        }
+
         vTaskDelay(pdMS_TO_TICKS(OTA_MONITOR_INTERVAL_MS));
     }
 }
 
-/**
- * @brief Application entry point
- * 
- * Initializes all subsystems and starts the control task.
- * Detects hardware and falls back to simulation if none found.
- * This function never returns - FreeRTOS scheduler takes over.
- */
+static esp_err_t init_network_services(void)
+{
+    esp_err_t ret = web_server_init();
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    https_config_t https_cfg;
+    web_server_get_default_https_config(&https_cfg);
+    https_cfg.use_https = false;
+    web_server_set_https_config(&https_cfg);
+
+    ret = web_server_start();
+    if (ret == ESP_OK) {
+        audit_log_event(AUDIT_EVENT_NETWORK_CONNECT, AUDIT_SEVERITY_INFO, "HTTP web server started");
+    }
+    return ret;
+}
+
 void app_main(void)
 {
-    /* Print startup banner */
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  ThermoFlow Climate Control System");
-    ESP_LOGI(TAG, "  Version: %s", THERMOFLOW_VERSION);
-    ESP_LOGI(TAG, "  Target: ESP32-S3");
-    ESP_LOGI(TAG, "  Security: IEC 62443 SL-2");
-    ESP_LOGI(TAG, "========================================");
-    
-    /* Log system information */
-    esp_chip_info_t chip_info;
-    esp_chip_info(&chip_info);
-    ESP_LOGI(TAG, "CPU cores: %d, Revision: %d", 
-             chip_info.cores, chip_info.revision);
-    ESP_LOGI(TAG, "Free heap at start: %lu bytes", esp_get_free_heap_size());
-    
-    /* Step 1: Initialize NVS (required for configuration storage) */
-    ESP_LOGI(TAG, "Initializing NVS...");
+    g_boot_time_ms = esp_log_timestamp();
+
+    ESP_LOGI(TAG, "ThermoFlow %s on ESP32-S3", THERMOFLOW_VERSION_STRING);
+
     ESP_ERROR_CHECK(init_nvs());
-    ESP_LOGI(TAG, "NVS initialized");
-    
-    /* Step 2: Create mutex for thread-safe sensor data access */
+
     g_sensor_mutex = xSemaphoreCreateMutex();
-    if (g_sensor_mutex == NULL) {
-        ESP_LOGE(TAG, "Failed to create sensor mutex - critical error");
-        return;  /* Cannot continue without mutex */
-    }
-    
-    /* Step 3: Initialize Hardware Manager - detects all connected hardware */
-    ESP_LOGI(TAG, "Detecting hardware...");
-    esp_err_t ret = hardware_manager_init();
-    if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "Hardware manager warning: %s", esp_err_to_name(ret));
-        /* Continue anyway - simulation mode is available */
-    }
-    
-    /* Log detection results */
-    const char *hw_summary = hardware_get_summary();
-    ESP_LOGI(TAG, "Hardware: %s", hw_summary);
-    
-    if (hardware_is_simulation_mode()) {
-        ESP_LOGW(TAG, "========================================");
-        ESP_LOGW(TAG, "  RUNNING IN SIMULATION MODE");
-        ESP_LOGW(TAG, "  No physical hardware detected!");
-        ESP_LOGW(TAG, "  Web interface available for testing.");
-        ESP_LOGW(TAG, "  Connect sensors and reboot for real mode.");
-        ESP_LOGW(TAG, "========================================");
-    }
-    
-    /* Step 4: Initialize Sensor Manager */
-    ESP_LOGI(TAG, "Initializing sensor manager...");
-    ret = sensor_manager_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Sensor manager init failed: %s", esp_err_to_name(ret));
-        /* Continue - system can work in limited mode */
-    } else {
-        if (sensor_manager_is_simulation_mode()) {
-            ESP_LOGI(TAG, "Sensor manager: SIMULATION MODE");
-        } else {
-            ESP_LOGI(TAG, "Sensor manager: HARDWARE MODE");
-        }
-    }
-    
-    /* Step 5: Initialize WiFi manager (AP mode or connect to configured WiFi) */
-    ESP_LOGI(TAG, "Initializing WiFi manager...");
-    ret = wifi_manager_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "WiFi manager init failed: %s", esp_err_to_name(ret));
-        /* Continue - system can work without WiFi */
-    } else {
-        ESP_LOGI(TAG, "WiFi manager initialized");
-        ESP_LOGI(TAG, "AP Name: %s", wifi_manager_get_ap_name());
-        ESP_LOGI(TAG, "WiFi Mode: %s", wifi_manager_is_ap_mode() ? "AP Mode (setup)" : 
-                 wifi_manager_is_connected() ? "Connected to WiFi" : "Connecting...");
-    }
-    
-    /* Step 6: Initialize fan controller (IEC 62443 SR-009 - fail-safe) */
-    /* Only if fans are actually detected */
-    if (hardware_is_detected(HW_COMPONENT_FAN_1)) {
-        ESP_LOGI(TAG, "Initializing fan controller...");
-        ret = fan_controller_init();
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Fan controller init failed: %s", esp_err_to_name(ret));
-            /* Continue - fans not critical for basic operation */
-        } else {
-            ESP_LOGI(TAG, "Fan controller initialized");
-        }
-    } else {
-        ESP_LOGW(TAG, "No fans detected - skipping fan controller");
-    }
-    
-    /* Step 7: Initialize anti-condensation protection (IEC 62443 SR-010) */
-    ESP_LOGI(TAG, "Initializing anti-condensation...");
-    ret = anti_condensation_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Anti-condensation init failed: %s", esp_err_to_name(ret));
-        /* Continue but log error */
-    } else {
-        ESP_LOGI(TAG, "Anti-condensation protection active");
-    }
-    
-    /* Step 8: Initialize OTA manager (DEV-001) */
-    ESP_LOGI(TAG, "Initializing OTA subsystem...");
-    ret = init_ota();
-    if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "OTA init failed: %s - continuing without OTA", esp_err_to_name(ret));
-        /* Continue - OTA is not critical for basic operation */
-    }
-    
-    /* Step 9: Create control task (main application logic) */
-    ESP_LOGI(TAG, "Creating control task...");
-    BaseType_t task_created = xTaskCreatePinnedToCore(
-        control_task,              /* Task function */
-        "control",                 /* Task name */
-        CONTROL_TASK_STACK_SIZE,   /* Stack size */
-        NULL,                      /* Parameters */
-        CONTROL_TASK_PRIORITY,     /* Priority */
-        NULL,                      /* Task handle (not needed) */
-        CONTROL_TASK_CORE          /* CPU core */
-    );
-    
-    if (task_created != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create control task - critical error");
+    if (!g_sensor_mutex) {
+        ESP_LOGE(TAG, "Failed to create sensor mutex");
         return;
     }
-    
-    ESP_LOGI(TAG, "Control task created successfully");
-    
-    /* Step 10: Create OTA monitoring task (DEV-001) */
-    ESP_LOGI(TAG, "Creating OTA monitor task...");
-    task_created = xTaskCreatePinnedToCore(
-        ota_monitor_task,
-        "ota_monitor",
-        OTA_MONITOR_TASK_STACK_SIZE,
-        NULL,
-        OTA_MONITOR_TASK_PRIORITY,
-        NULL,
-        tskNO_AFFINITY
-    );
-    
-    if (task_created != pdPASS) {
-        ESP_LOGW(TAG, "Failed to create OTA monitor task - OTA disabled");
-    } else {
-        ESP_LOGI(TAG, "OTA monitor task created successfully");
+
+    security_manager_init();
+
+    audit_log_config_t audit_cfg = {
+        .storage_path = NULL,
+        .max_entries = 100,
+        .wrap_around = true,
+    };
+    audit_log_init(&audit_cfg);
+    audit_log_event(AUDIT_EVENT_SYSTEM_BOOT, AUDIT_SEVERITY_INFO,
+                    "Boot ThermoFlow %s", THERMOFLOW_VERSION_STRING);
+
+    rate_limiter_init();
+
+    hardware_manager_init();
+    ESP_LOGI(TAG, "Hardware: %s", hardware_get_summary());
+
+    sensor_manager_init();
+    g_ftx_initialized = (ftx_init(FTX_CORE_EFFICIENCY_DEFAULT) == 0);
+
+    wifi_manager_init();
+
+    init_network_services();
+    mqtt_ftx_init();
+
+    if (hardware_is_detected(HW_COMPONENT_FAN_1)) {
+        fan_controller_init();
     }
-    
-    ESP_LOGI(TAG, "========================================");
+
+    if (hardware_is_detected(HW_COMPONENT_OLED_DISPLAY)) {
+        display_manager_init();
+    }
+
+    anti_condensation_init();
+    init_ota();
+
+    xTaskCreatePinnedToCore(control_task, "control", CONTROL_TASK_STACK_SIZE,
+                            NULL, CONTROL_TASK_PRIORITY, NULL, tskNO_AFFINITY);
+    xTaskCreatePinnedToCore(ota_monitor_task, "ota_monitor", OTA_MONITOR_TASK_STACK_SIZE,
+                            NULL, OTA_MONITOR_TASK_PRIORITY, NULL, tskNO_AFFINITY);
+
     ESP_LOGI(TAG, "System initialization complete");
-    ESP_LOGI(TAG, "========================================");
-    
-    /* Main task can now exit - control_task handles everything */
-    /* vTaskDelete(NULL) would delete this task, but we keep it for debug logging */
-    
-    while (1) {
-        /* Optional: Monitor system health, handle events, etc. */
-        vTaskDelay(pdMS_TO_TICKS(10000));  /* 10 second heartbeat */
-        
-        if (hardware_is_simulation_mode()) {
-            ESP_LOGI(TAG, "[SIMULATION MODE] Heartbeat - heap: %lu bytes", esp_get_free_heap_size());
-        } else {
-            ESP_LOGI(TAG, "Heartbeat - heap: %lu bytes", esp_get_free_heap_size());
-        }
-    }
 }
