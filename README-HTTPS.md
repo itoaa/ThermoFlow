@@ -1,5 +1,7 @@
 # ThermoFlow HTTPS Web Server
 
+> **Status (2026-07-12):** HTTPS is implemented in `components/web_server/` but **disabled at runtime** (falls back to HTTP due to ESP-IDF v5.1.2 compatibility). The web server is **not started from `main.c`**. See [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md).
+
 ## Overview
 
 This document describes the HTTPS web server implementation for ThermoFlow, addressing **Security Finding THF-003 (CVSS 7.5)**.

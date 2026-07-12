@@ -1,402 +1,193 @@
 # ThermoFlow Implementation Status
 
-**Document Version:** 1.5.0  
-**Last Updated:** 2026-04-03  
-**Project:** ThermoFlow - ESP32-S3 Climate Monitoring and Control System
+**Document Version:** 2.0.0  
+**Last Updated:** 2026-07-12  
+**Firmware Version (`main.c`):** 1.2.0  
+**Project:** ThermoFlow — ESP32-S3 Climate Monitoring and Control System
+
+> Denna fil beskriver **vad som faktiskt finns i kod och körs i firmware**, inte vad som är planerat eller dokumenterat i äldre versioner.  
+> För allt som saknas och förbättringsförslag, se [TODO.md](TODO.md).
 
 ---
 
-## ✅ Component Implementation Matrix (Complete)
+## Sammanfattning
 
-| Component | Status | Files | Lines | Tests | Security |
-|-----------|--------|-------|-------|-------|----------|
-| **sht4x_sensor** | ✅ Complete | 3 | ~450 | ✅ Complete | CRC validation |
-| **fan_control** | ✅ Complete | 3 | ~500 | ✅ Complete | Fail-safe (SR-009) |
-| **mqtt_client** | ✅ Complete | 3 | ~400 | ⏳ N/A | TLS 1.3 (SR-003) |
-| **web_server** | ✅ Complete | 5 | ~550 | ⏳ N/A | HTTPS (SR-003) |
-| **security_utils** | ✅ Complete | 4 | ~620 | ⏳ N/A | Auth, Ed25519 (SR-002) |
-| **display_driver** | ✅ Complete | 4 | ~850 | ⏳ N/A | Full ASCII font |
-| **anti_condensation** | ✅ Complete | 3 | ~350 | ✅ Complete | Thresholds (SR-010) |
-| **sensor_manager** | ✅ Complete | 3 | ~300 | ⏳ N/A | Validation (SR-001) |
-| **rate_limiter** | ✅ Complete | 3 | ~650 | ⏳ N/A | Token bucket (SR-006) |
-| **audit_log** | ✅ Complete | 3 | ~600 | ⏳ N/A | Checksums (SR-005) |
-| **heat_recovery** | ✅ Complete | 3 | ~800 | ⏳ N/A | FTX calculations |
-| **wifi_manager** | ✅ Complete | 3 | ~500 | ⏳ N/A | AP mode + NVS storage |
-| **Tests** | ✅ Complete | 4 | ~800 | ✅ Complete | Unity framework |
+ThermoFlow har en välstrukturerad komponentarkitektur med många färdiga moduler, men **huvudapplikationen (`main.c`) integrerar bara en delmängd**. Vid boot körs idag:
 
-**Legend:**
-- ✅ Complete - Fully implemented and documented
-- ⏳ N/A - Not applicable (external dependencies)
+1. NVS-init  
+2. Hardware detection (I2C-probe för SHT40/OLED)  
+3. Sensor manager (simulerad data)  
+4. WiFi manager (AP-läge eller anslutning)  
+5. Fan controller (mjukvarustate, ingen PWM)  
+6. Anti-condensation  
+7. OTA manager (init + monitor, utan faktisk uppdatering)  
+8. Control task + OTA monitor task  
+
+**Startas inte vid boot:** web_server, MQTT, heat_recovery, display, audit_log, rate_limiter, security_manager, cert_manager.
 
 ---
 
-## Recent Changes (2026-04-03)
+## Statusförklaring
 
-### v1.5.0 - WiFi Manager & Modern Web GUI 🌐
-
-**WiFi Manager Component:**
-- ✅ AP mode with MAC-based naming (`ThermoFlow-XXXX`)
-- ✅ Web-based WiFi configuration
-- ✅ Credentials saved to NVS (flash)
-- ✅ Automatic reconnection on boot
-- ✅ Fallback to AP mode if connection fails
-- ✅ `wifi_manager_get_status()`, `wifi_manager_configure()`, `wifi_manager_reset()`
-
-**Modern Web Interface:**
-- ✅ Single Page Application (SPA) - no page reloads
-- ✅ Chart.js integration for temperature history
-- ✅ Animated gauges for real-time sensor values
-- ✅ Dark/Light/Auto theme with localStorage persistence
-- ✅ PWA support: Service worker, offline capability, manifest
-- ✅ Toast notifications for user feedback
-- ✅ Keyboard shortcuts: Ctrl+1-4 for views, Ctrl+R to refresh
-- ✅ Glassmorphism design with smooth animations
-- ✅ Responsive layout with mobile bottom navigation
-
-**Build Automation:**
-- ✅ Git pre-commit hook for automatic binary copying
-- ✅ `binaries/` folder with latest compiled firmware
+| Status | Betydelse |
+|--------|-----------|
+| **Körs** | Initieras/anropas från `main.c` |
+| **Implementerad** | Fungerande kod i komponenten |
+| **Delvis** | Kod finns men stub, fallback eller ofullständig |
+| **Ej kopplad** | Implementerad komponent som inte anropas från `main.c` |
+| **Stub** | Platshållare utan riktig funktionalitet |
+| **Saknas** | Nämns i docs men ingen kod |
 
 ---
 
-### v1.4.0 - Mini-FTX Extension 🏠
+## Komponentmatris
 
-**Heat Recovery Component** (`components/heat_recovery/`):
-- ✅ Värmeåtervinningsberäkningar (effektivitet, energibesparing)
-- ✅ Frostskydd med hysteresis (min 60s aktiveringstid)
-- ✅ Fläktstyrning med hysteresis (förhindrar fladder)
-- ✅ Luftflödesbalans-övervakning
-- ✅ Rate limiting för MQTT (max 1 publikation per 5-60s)
-- ✅ Sensorvalidering (NaN, infinity, rimliga värden)
+| Component | Kodstatus | Körs i `main.c` | Tester | Kommentar |
+|-----------|-----------|-----------------|--------|-----------|
+| **hardware_manager** | Delvis | ✅ Körs | — | I2C-probe för SHT40/OLED fungerar; fläktar markeras "detekterade" om GPIO kan konfigureras |
+| **sensor_manager** | Delvis | ✅ Körs | — | Returnerar alltid simulerad data; `sht4x`-drivrutin anropas inte |
+| **sht4x_sensor** | Implementerad | ❌ Ej kopplad | ✅ Unity | Full I2C-drivrutin med CRC; används inte av sensor_manager |
+| **sht3x_sensor** | Implementerad | ❌ Ej kopplad | — | Legacy-komponent, inte integrerad |
+| **wifi_manager** | Delvis | ✅ Körs | — | AP-läge och WiFi-anslutning fungerar |
+| **wifi_secure_storage** | Stub | Via wifi_manager | ⏳ Finns | Krypteringsstubbar i kompatibilitetsläge |
+| **fan_control** | Delvis | ✅ Körs | ✅ Unity | Fail-safe-logik i mjukvara; **ingen LEDC/PWM** |
+| **anti_condensation** | Implementerad | ✅ Körs | ✅ Unity | Tröskelvärden och hysteresis fungerar |
+| **web_server** | Delvis | ❌ Ej kopplad | ⏳ Finns | HTTP-API och SPA finns; **HTTPS inaktiverat**; startas inte i main |
+| **mqtt_client** | Delvis | ❌ Ej kopplad | ⏳ Finns | Omfattande TLS-kod; ej startad från main |
+| **mqtt_ftx** | Delvis | ❌ Ej kopplad | — | FTX-specifika MQTT-topics; ej startad |
+| **heat_recovery** | Implementerad | ❌ Ej kopplad | — | Beräkningslogik (frost, effektivitet); fristående bibliotek |
+| **display_driver** | Stub | ❌ Ej kopplad | — | Loggar till serial, ingen OLED-skrivning |
+| **ota_manager** | Stub | ✅ Körs | — | Init + status; download/apply/rollback **ej implementerat** |
+| **security_utils** | Delvis | ❌ Ej kopplad | — | Certifikathantering delvis; **Ed25519 är placeholder** |
+| **cert_manager** | Delvis | ❌ Ej kopplad | — | Finns som komponent, ej kopplad till main |
+| **audit_log** | Implementerad | ❌ Ej kopplad | — | Minnesbuffert med checksum; ej startad |
+| **rate_limiter** | Implementerad | ❌ Ej kopplad | — | Token bucket; ej kopplad till web_server |
+| **anti_condensation** | Implementerad | ✅ Körs | ✅ Unity | Se SR-010-konflikt i [TODO.md](TODO.md) |
 
-**Security Fixes (5 Critical):**
-1. ✅ Frost Protection Actions - Tidigare bara detektion, nu faktiska åtgärder
-2. ✅ Fan Speed Hysteresis - Förhindrar fladder vid gränsvärden
-3. ✅ MQTT Rate Limiting - Max 1 publikation per intervall
-4. ✅ Sensor Validation - Kollar NaN, infinity, rimliga värden
-5. ✅ Airflow Balance Monitoring - Detekterar obalans mellan tilluft/frånluft
+**Förkortningar:** ⏳ Finns = testfil finns men ingår inte i `test_main.c`
 
 ---
 
-### v1.2.0-v1.3.0 - Migration to Pure ESP-IDF
+## Vad `main.c` faktiskt gör
 
-**Removed PlatformIO support:**
-- ✅ Deleted `platformio.ini`
-- ✅ Deleted `PLATFORMIO.md`
-- ✅ Deleted `BUILD_INSTRUCTIONS.md` (PlatformIO content)
-- ✅ Updated all documentation to reference ESP-IDF only
-- ✅ Build scripts use ESP-IDF exclusively
+### Startsekvens (implementerad)
+```
+NVS → hardware_manager → sensor_manager → wifi_manager
+  → fan_controller (om fläkt "detekterad") → anti_condensation → ota_manager
+  → control_task + ota_monitor_task
+```
 
-**Code Quality Improvements:**
-1. ✅ Removed duplicate .cpp files
-2. ✅ Enhanced Documentation in sensor_manager.c, rate_limiter.c, audit_log.c
-3. ✅ Fixed compilation errors in main.c, rate_limiter.c
+### Control loop (implementerad)
+- Läser sensorer via `sensor_manager_read_all()` (simulerat)
+- Kör `anti_condensation_check()`
+- Styr fläkt 1 baserat på temperatur/kondensationslarm (mjukvarustate)
+- Anropar `wifi_manager_run()`
+- Loggar status var 5:e sekund
+
+### Control loop (ej implementerad)
+- Fläkt 2-styrning
+- FTX/värmeåtervinningslogik
+- MQTT-publicering
+- Web API-uppdatering
+- Displayuppdatering
+- Audit logging av händelser
+
+---
+
+## Funktioner per README — ärlig status
+
+| Funktion | Dokumenterad | Verklig status |
+|----------|--------------|----------------|
+| Multi-sensor SHT40 (upp till 4 st) | ✅ | Delvis — detektering ja, läsning nej (simulation) |
+| PWM-fläktstyrning (2 st) | ✅ | Delvis — logik ja, hårdvara nej |
+| Anti-kondens (\>90 % RH) | ✅ | Delvis — detektion ja; fläktbeteende inkonsekvent med SR-010 |
+| MQTT + TLS | ✅ | Ej kopplad — kod finns, startas inte |
+| Webbgränssnitt (SPA/PWA) | ✅ | Ej kopplad — startas inte från main |
+| HTTPS | ✅ | Delvis — faller tillbaka till HTTP |
+| OTA med Ed25519 | ✅ | Stub — ingen faktisk uppdatering |
+| WiFi Manager (AP-läge) | ✅ | Körs |
+| Hårdvarudetektering | ✅ | Delvis — I2C ja, fläktar förenklad detektering |
+| Simuleringsläge | ✅ | Körs |
+| Mini-FTX / värmeåtervinning | ✅ | Ej kopplad — bibliotek finns |
+| OLED-display | ✅ | Stub |
+| MicroSD-loggning | ✅ | Saknas |
+| IEC 62443 SL-2 | ✅ | Delvis — ramverk och vissa moduler, ej full integration |
+
+---
+
+## Säkerhetskrav (SR-001 – SR-011)
+
+| Requirement | Component | Kodstatus | Körs i firmware |
+|-------------|-----------|-----------|-----------------|
+| SR-001: Input Validation | sensor_manager | Delvis | ✅ (validering av simulerad data) |
+| SR-002: Authentication | security_utils | Delvis | ❌ |
+| SR-003: Secure Communication | mqtt_client, web_server | Delvis | ❌ (ej startade; HTTPS av) |
+| SR-004: Fail-Safe Defaults | fan_control | Delvis | ✅ (mjukvara) |
+| SR-005: Audit Logging | audit_log | Implementerad | ❌ |
+| SR-006: Resource Limits | rate_limiter | Implementerad | ❌ |
+| SR-007: Error Handling | Alla | Delvis | Varierar |
+| SR-008: Dependency Management | — | Saknas | ❌ SBOM ej skapad |
+| SR-009: Actuator Fail-Safe | fan_control | Delvis | ✅ (ingen HW-failsafe) |
+| SR-010: Environmental Limits | anti_condensation | Implementerad | ⚠️ Konflikt med main.c-fläktlogik |
+| SR-011: OTA Security | ota_manager, ed25519 | Stub | ❌ |
+
+---
+
+## Teststatus
+
+### Körs via `tests/test_main.c`
+| Test suite | Fil | Status |
+|------------|-----|--------|
+| SHT4x sensor | `test_sht4x.c` | ✅ I runner |
+| Fan controller | `test_fan_controller.c` | ✅ I runner |
+| Anti-condensation | `test_anti_condensation.c` | ✅ I runner |
+
+### Finns men körs inte automatiskt
+| Test suite | Fil |
+|------------|-----|
+| HTTPS / web server | `test_https.c` |
+| WiFi encryption | `test_wifi_encryption.c` |
+| Secure boot | `test_secure_boot.c` |
+| MQTT TLS | `components/mqtt_client/test_mqtt_tls.c` |
 
 ---
 
 ## Build Status
 
+Senast dokumenterad bygginfo (från tidigare release):
+
 ```
-✅ Build successful
-Binary: build/ThermoFlow.bin
-Size: 0xb7780 bytes (~750 KB)
-Flash usage: 28% (72% free space)
 Target: ESP32-S3
 ESP-IDF: v5.1.2
-Components: 12
+Binary: ~750 KB (28 % flash)
 ```
 
----
+För att bygga:
 
-## Code Documentation Standards
-
-All source files now follow consistent documentation:
-
-### File Header Template
-```c
-/**
- * @file filename.c
- * @brief Brief description - ESP-IDF
- *
- * Detailed description of what this file does.
- * Lists main features and purpose.
- *
- * Features:
- * - Feature 1
- * - Feature 2
- *
- * @author Ola Andersson
- * @version 1.0.0
- * @date 2026-04-03
- *
- * @section changelog Change Log
- * - 1.0.0 (2026-04-03): Initial implementation
- *   - Feature A
- *   - Feature B
- */
-```
-
-### Function Documentation
-```c
-/**
- * @brief Brief description
- *
- * Detailed description if needed.
- *
- * @param param1 Description
- * @param[out] param2 Description of output
- * @return ESP_OK on success, error code otherwise
- */
-```
-
----
-
-## Security Requirements Mapping (Updated)
-
-| Requirement | Component | Status |
-|-------------|-----------|--------|
-| SR-001: Input Validation | sensor_manager | ✅ Implemented |
-| SR-002: Authentication | security_utils | ✅ Implemented |
-| SR-003: Secure Communication | mqtt_client, web_server | ✅ Implemented |
-| SR-004: Fail-Safe Defaults | fan_control | ✅ Implemented |
-| SR-005: Audit Logging | audit_log | ✅ Implemented |
-| SR-006: Resource Limits | rate_limiter | ✅ Implemented |
-| SR-007: Error Handling | All components | ✅ Implemented |
-| SR-008: Dependency Management | ⏳ | SBOM still needed |
-| SR-009: Actuator Fail-Safe | fan_control | ✅ Implemented |
-| SR-010: Environmental Limits | anti_condensation | ✅ Implemented |
-| SR-011: OTA Security | security_utils | ✅ Implemented |
-
----
-
-## Complete File Tree
-
-```
-ThermoFlow/
-├── main/
-│   ├── CMakeLists.txt                ✅ Includes wifi_manager
-│   └── main.c                        ✅ WiFi manager integration
-├── components/
-│   ├── sht4x_sensor/
-│   │   ├── CMakeLists.txt
-│   │   ├── include/sht4x_sensor.h    ✅ Complete
-│   │   ├── library.json
-│   │   └── sht4x_sensor.c            ✅ Complete
-│   ├── fan_control/
-│   │   ├── CMakeLists.txt            ✅ Added esp_timer
-│   │   ├── include/fan_controller.h  ✅ Complete
-│   │   ├── library.json
-│   │   └── fan_controller.c          ✅ Enhanced docs
-│   ├── mqtt_client/
-│   │   ├── CMakeLists.txt
-│   │   ├── include/mqtt_client.h
-│   │   ├── library.json
-│   │   └── mqtt_client.c
-│   ├── web_server/
-│   │   ├── CMakeLists.txt            ✅ Includes wifi_manager
-│   │   ├── include/web_server.h
-│   │   ├── library.json
-│   │   ├── web_server.c              ✅ New WiFi endpoints
-│   │   └── web/                      ✅ Modern SPA GUI
-│   │       ├── index.html            ✅ SPA with Charts
-│   │       ├── style.css             ✅ Glassmorphism theme
-│   │       ├── script.js             ✅ PWA, Toast notifications
-│   │       ├── manifest.json         ✅ PWA manifest
-│   │       └── sw.js                 ✅ Service Worker
-│   ├── security_utils/
-│   │   ├── CMakeLists.txt
-│   │   ├── include/
-│   │   │   ├── security_manager.h
-│   │   │   └── ed25519_impl.h
-│   │   ├── library.json
-│   │   ├── security_manager.c
-│   │   └── ed25519_impl.c
-│   ├── display_driver/
-│   │   ├── CMakeLists.txt
-│   │   ├── include/
-│   │   │   ├── display_manager.h
-│   │   │   └── font_5x7.h
-│   │   ├── library.json
-│   │   └── display_manager.c
-│   ├── anti_condensation/
-│   │   ├── CMakeLists.txt
-│   │   ├── include/anti_condensation.h ✅ Fixed API
-│   │   ├── library.json
-│   │   └── anti_condensation.c
-│   ├── sensor_manager/
-│   │   ├── CMakeLists.txt
-│   │   ├── include/sensor_manager.h
-│   │   ├── library.json
-│   │   └── sensor_manager.c          ✅ Enhanced docs
-│   ├── rate_limiter/
-│   │   ├── CMakeLists.txt
-│   │   ├── include/rate_limiter.h
-│   │   ├── library.json
-│   │   └── rate_limiter.c            ✅ Enhanced docs
-│   ├── audit_log/
-│   │   ├── CMakeLists.txt
-│   │   ├── include/audit_log.h
-│   │   ├── library.json
-│   │   └── audit_log.c               ✅ Enhanced docs
-│   ├── heat_recovery/                ✅ NEW v1.4.0
-│   │   ├── CMakeLists.txt
-│   │   ├── include/
-│   │   │   └── heat_recovery.h
-│   │   ├── library.json
-│   │   └── heat_recovery.c
-│   └── wifi_manager/                 ✅ NEW v1.5.0
-│       ├── CMakeLists.txt
-│       ├── include/
-│       │   └── wifi_manager.h
-│       ├── wifi_manager.c
-│       └── wifi_config.html
-├── tests/
-│   ├── CMakeLists.txt
-│   ├── test_main.c
-│   ├── test_sht4x.c
-│   ├── test_fan_controller.c
-│   └── test_anti_condensation.c
-├── include/
-│   ├── display_types.h
-│   ├── esp_http_server_compat.h
-│   ├── fan_controller.h
-│   ├── ota_manager.h
-│   ├── sdkconfig.h
-│   ├── sensor_manager.h
-│   ├── thermoflow_config.h
-│   ├── web_server.h
-│   └── wifi_manager.h
-├── binaries/                         ✅ Pre-compiled firmware
-│   ├── ThermoFlow.bin
-│   ├── bootloader.bin
-│   ├── partition-table.bin
-│   └── README.md
-├── docs/
-│   ├── FTX_EXTENSION.md              ✅ Mini-FTX documentation
-│   ├── MQTT_FTX_API.md               ✅ MQTT API docs
-│   └── IMPLEMENTATION_STATUS.md      ✅ This file
-├── data/
-│   └── cacert.pem
-├── .git/hooks/
-│   └── pre-commit                    ✅ Auto-copy binaries
-├── CMakeLists.txt
-├── CHANGELOG.md                      ✅ v1.5.0 updates
-├── PROJECT_FRAMEWORK.md
-├── README.md                         ✅ v1.5.0 features
-├── BUILD.md                          ✅ WiFi config docs
-├── BUILD_ESP_IDF.md                  ✅ Detailed ESP-IDF guide
-├── build.sh                          ✅ ESP-IDF build script
-├── flash.sh                          ✅ ESP-IDF flash script
-├── quick_build.sh                    ✅ Fast incremental build
-├── sdkconfig.defaults
-├── partitions.csv
-└── .gitignore                        ✅ Excludes build artifacts
-```
-
----
-
-## Compilation Instructions
-
-### Using build script (recommended):
 ```bash
 cd ThermoFlow
 ./build.sh
 ```
 
-### Using ESP-IDF directly:
-```bash
-cd ThermoFlow
-idf.py set-target esp32s3
-idf.py build
-```
+---
 
-### Flashing:
-```bash
-./flash.sh /dev/ttyUSB0
-```
+## Kända säkerhetsproblem
+
+Se [TODO.md](TODO.md) avsnitt 1. Kortfattat:
+
+1. **Privata nycklar i `keys/`** — måste roteras och tas bort från repot  
+2. **Ed25519 placeholder** — inte lämplig för produktion  
+3. **WiFi-krypteringsstub** — loggar "NOT SECURE" i vissa kodvägar  
 
 ---
 
-## WiFi Configuration
+## Nästa steg
 
-### First Boot (AP Mode):
-1. Enheten startar som `ThermoFlow-XXXX` (där XXXX är sista 4 hex av MAC)
-2. Anslut till AP:n från din telefon/dator
-3. Öppna http://192.168.4.1 i webbläsare
-4. Ange ditt WiFi-nätverk och lösenord
-5. Enheten startar om och ansluter till nätverket
+Prioriterad lista finns i [TODO.md](TODO.md). De tre viktigaste:
 
-### API Endpoints:
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/device/info` | GET | MAC, namn, version, IP |
-| `/api/wifi/config` | POST | Spara WiFi-konfiguration |
-
----
-
-## Prerequisites
-
-**ESP-IDF Installation:**
-```bash
-cd ~
-git clone -b v5.1.2 --recursive https://github.com/espressif/esp-idf.git
-./esp-idf/install.sh esp32s3
-```
-
-**Environment Setup:**
-```bash
-export IDF_PATH="$HOME/esp-idf"
-. $IDF_PATH/export.sh
-```
-
----
-
-## Next Steps
-
-1. ✅ **Build system working** - All components compile successfully
-2. ✅ **WiFi Manager** - AP mode and web configuration implemented
-3. ✅ **Modern Web GUI** - SPA with PWA support
-4. **Hardware testing** - Test on actual ESP32-S3 hardware
-5. **Integration testing** - End-to-end sensor + fan scenarios
-6. **SBOM documentation** - Create dependency inventory for SR-008
-
----
-
-## Change Log
-
-### 2026-04-03 - v1.5.0
-- ✅ WiFi Manager component with AP mode
-- ✅ Modern Web GUI (SPA, Charts, PWA)
-- ✅ Git pre-commit hook for binaries
-- ✅ Theme support (Dark/Light/Auto)
-- ✅ Toast notifications
-- ✅ Keyboard shortcuts
-
-### 2026-04-03 - v1.4.0
-- ✅ Mini-FTX Extension (heat_recovery component)
-- ✅ Frost protection with hysteresis
-- ✅ Fan speed hysteresis
-- ✅ MQTT rate limiting
-- ✅ Sensor validation
-- ✅ Airflow balance monitoring
-
-### 2026-03-22 - v1.2.0-v1.3.0
-- ✅ Migrated from PlatformIO to pure ESP-IDF
-- ✅ Removed PlatformIO configuration files
-- ✅ Enhanced documentation
-- ✅ Fixed compilation errors
-
-### 2026-03-22 - v1.1.0
-- ✅ Unit tests with Unity framework
-- ✅ Full ASCII font (5x7, 96 chars)
-- ✅ Ed25519 OTA signing framework
-- ✅ Rate limiter (token bucket)
-- ✅ Audit logging with integrity
-
-### 2026-03-22 - v1.0.0
-- ✅ Initial 8 components
-- ✅ Security framework compliance
-- ✅ Web interface
+1. Koppla `web_server` och `sensor_manager` → riktig SHT40-läsning i `main.c`  
+2. Implementera PWM (LEDC) och lös SR-010-konflikten  
+3. Rotera nycklar och slutför säkerhetsstubbar innan produktion  
 
 ---
 

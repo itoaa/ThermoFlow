@@ -1,66 +1,94 @@
 # ThermoFlow - ESP32-S3 Climate Monitoring and Control System
 
+**Firmware version:** 1.2.0 (definierad i `main/main.c`)  
+**Repository:** https://github.com/itoaa/ThermoFlow
+
 ## Overview
 
-ThermoFlow monitors temperature and humidity for:
-- **Mobile AC units** (cold and hot air monitoring)
-- **DIY heat exchangers** with fan control
-- **Mini-FTX systems** (Frånluftsventilation med värmeåtervinning)
+ThermoFlow is an ESP32-S3 based system for monitoring temperature and humidity, with optional fan control. Target use cases:
+
+- **Mobile AC units** — cold and hot air monitoring
+- **DIY heat exchangers** — fan control based on conditions
+- **Mini-FTX** — ventilation with heat recovery calculations
+
+> **Important:** Many components exist as separate modules but are **not yet wired into `main.c`**. See [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for the honest status and [docs/TODO.md](docs/TODO.md) for everything still to do.
+
+---
+
+## What works today (firmware 1.2.0)
+
+These features are **initialized and run** from `main.c`:
+
+| Feature | Status |
+|---------|--------|
+| NVS / configuration storage | ✅ Runs |
+| Hardware detection (I2C probe for SHT40/OLED) | ✅ Runs |
+| Simulation mode (no hardware required) | ✅ Runs |
+| WiFi manager (AP setup or connect to saved network) | ✅ Runs |
+| Sensor manager | ⚠️ Runs, but returns **simulated** data |
+| Fan controller | ⚠️ Runs, **software state only** (no PWM output) |
+| Anti-condensation monitoring | ✅ Runs |
+| OTA manager | ⚠️ Init only — no actual firmware download |
+
+### Not started from `main.c` (code exists elsewhere)
+
+| Feature | Status |
+|---------|--------|
+| Web interface (SPA/PWA) | ❌ Not started — see `components/web_server/` |
+| MQTT / Home Assistant | ❌ Not started — see `components/mqtt_client/` |
+| Mini-FTX / heat recovery | ❌ Not started — see `components/heat_recovery/` |
+| OLED display | ❌ Stub only |
+| Audit log, rate limiter | ❌ Not started |
+| HTTPS | ⚠️ Falls back to HTTP if started manually |
+| OTA download / rollback | ❌ Stub |
+| MicroSD logging | ❌ Not implemented |
+
+---
 
 ## Use Cases
 
-| Mode | Description | Hardware |
-|------|-------------|----------|
-| **AC Monitor** | Track mobile AC efficiency | 2-4 sensors |
-| **Heat Exchanger** | Control DIY air-to-air HX | 2 fans + sensors |
-| **Mini-FTX** | Full ventilation with heat recovery | 4 sensors + 2 fans + web UI |
+| Mode | Description | Hardware | Firmware readiness |
+|------|-------------|----------|-------------------|
+| **AC Monitor** | Track mobile AC efficiency | 2–4 sensors | Simulation only |
+| **Heat Exchanger** | Control DIY air-to-air HX | 2 fans + sensors | Partial (no PWM, no real sensors) |
+| **Mini-FTX** | Ventilation with heat recovery | 4 sensors + 2 fans + web UI | Library only, not integrated |
 
-## Features
+---
 
-### Core Features
-- **Multi-sensor**: Up to 4x SHT40 sensors (I2C)
-- **Fan Control**: PWM control for 2 fans
-- **Anti-condensation**: Automatic protection at >90% RH
-- **MQTT**: Secure TLS connection to Home Assistant
-- **Web Interface**: Modern SPA with charts (HTTPS)
-- **OTA Updates**: Signed firmware updates (Ed25519)
-- **Security**: IEC 62443 SL-2 compliant
-- **WiFi Manager**: AP mode for easy configuration
+## Features (by implementation state)
 
-### Hardware Detection & Simulation Mode (v1.1.0) 🔌
-- **Auto-detect**: SHT40 sensors, OLED display, and PWM fans at boot
-- **Simulation Mode**: Runs without hardware for testing/onboarding
-- **"Bare" ESP32-S3**: Flash to unconfigured device, configure WiFi via web
-- **Pin Config API**: Shows GPIO connections for missing hardware
-- **Seamless Switch**: Connect sensors and reboot → automatic hardware mode
+### Running in firmware
+- **Hardware detection** — I2C probe for SHT40 and OLED at boot
+- **Simulation mode** — runs without sensors for testing
+- **WiFi Manager** — AP mode `ThermoFlow-XXXX` for initial setup
+- **Anti-condensation** — RH threshold monitoring with hysteresis
+- **Fan control logic** — temperature-based speed in software (no PWM yet)
 
-### Mini-FTX Extension (v1.5.0)
-- **Heat Recovery**: Calculate efficiency (up to 95%)
-- **Energy Tracking**: Monitor saved energy in kWh/day
-- **Frost Protection**: Automatic detection and prevention
-- **Filter Monitoring**: Track filter status
-- **Smart Control**: Auto-adjust fan speed based on conditions
-- **Airflow Balance**: Monitor supply/exhaust balance
+### Implemented as components (not wired to main)
+- **SHT40 driver** — full I2C driver with CRC (`components/sht4x_sensor/`)
+- **Web server** — HTTP API + modern SPA (`components/web_server/web/`)
+- **MQTT client** — TLS support (`components/mqtt_client/`)
+- **Heat recovery** — FTX calculations, frost protection (`components/heat_recovery/`)
+- **Audit log** — in-memory event log with checksums
+- **Rate limiter** — token bucket per client
+- **Security utils** — certificate management (Ed25519 is placeholder)
 
-### Web GUI (v1.5.0) 🎨
-- **Single Page Application** - No page reloads
-- **Real-time Charts** - Chart.js for temperature history
-- **Animated Gauges** - Visual temperature/humidity displays
-- **Dark/Light Theme** - Auto theme switching
-- **PWA Support** - Install as app, offline capable
-- **Toast Notifications** - Non-intrusive feedback
-- **Keyboard Shortcuts** - Ctrl+1-4 for views
+### Planned / documented but not complete
+- PWM fan output via LEDC
+- Signed OTA updates (Ed25519 stub)
+- HTTPS web server (disabled for ESP-IDF v5.1.2 compatibility)
+- MicroSD logging
+- Full IEC 62443 SL-2 integration
 
-See [docs/FTX_EXTENSION.md](docs/FTX_EXTENSION.md) for FTX documentation.
+---
 
 ## Hardware
 
-- **MCU**: ESP32-S3 (240MHz, WiFi + BLE)
-- **Sensors**: Sensirion SHT40 (I2C, ±0.2°C, ±1.8% RH)
-- **Display**: OLED 0.96" I2C (optional)
-- **Fans**: 2x PWM controlled (3-pin or 4-pin)
-- **Storage**: MicroSD for local logging
-- **Power**: 5V USB or 5V/2A adapter
+- **MCU:** ESP32-S3 (240 MHz, WiFi + BLE)
+- **Sensors:** Sensirion SHT40 (I2C) — driver exists, not yet used by sensor_manager
+- **Display:** OLED 0.96" I2C (optional) — stub only
+- **Fans:** 2× PWM (GPIO 10/11) — not yet driven in hardware
+- **Power:** 5 V USB or 5 V/2 A adapter
 
 ### Pin Configuration
 
@@ -68,129 +96,110 @@ See [docs/FTX_EXTENSION.md](docs/FTX_EXTENSION.md) for FTX documentation.
 |----------|------|-------|
 | I2C SDA | GPIO 8 | SHT40 sensors, OLED |
 | I2C SCL | GPIO 9 | SHT40 sensors, OLED |
-| Fan 1 PWM | GPIO 10 | PWM output |
-| Fan 2 PWM | GPIO 11 | PWM output |
+| Fan 1 PWM | GPIO 10 | Not yet connected in code |
+| Fan 2 PWM | GPIO 11 | Not yet connected in code |
+
+---
 
 ## Quick Start
 
-### Flash Pre-built Binary (No Build Required)
+### Flash Pre-built Binary
 
 ```bash
-# Flash pre-built binary to ESP32-S3
 cd ThermoFlow
-./flash.sh /dev/ttyUSB0  # Replace with your port
-
-# Or use esptool directly
-esptool.py -p /dev/ttyUSB0 -b 460800 write_flash 0x0 binaries/bootloader.bin 0x8000 binaries/partition-table.bin 0x10000 binaries/ThermoFlow.bin
+./flash.sh /dev/ttyUSB0   # Replace with your port
 ```
 
 After flashing:
 1. Device starts in AP mode: `ThermoFlow-XXXX` (last 4 hex of MAC)
-2. Connect to AP, open http://192.168.4.1
-3. Configure WiFi credentials
-4. Device restarts and connects to your network
+2. Connect to the AP
+3. Configure WiFi (web UI requires `web_server` to be started — see [TODO.md](docs/TODO.md))
+
+> **Note:** The pre-built binary matches `main.c` v1.2.0. The web interface is **not** started automatically in the current firmware.
 
 ### Build from Source
 
-Requires ESP-IDF installed at `$HOME/esp-idf`.
+Requires ESP-IDF v5.1+ at `$HOME/esp-idf`.
 
 ```bash
 cd ThermoFlow
-
-# Build
 ./build.sh
-
-# Or with clean
-./build.sh clean
-
-# Flash and monitor
 ./flash.sh /dev/ttyUSB0
-
-# Quick build (incremental, faster)
-./quick_build.sh
 ```
 
-See [BUILD.md](BUILD.md) and [BUILD_ESP_IDF.md](BUILD_ESP_IDF.md) for detailed instructions.
+See [BUILD.md](BUILD.md) and [BUILD_ESP_IDF.md](BUILD_ESP_IDF.md) for details.
+
+---
 
 ## API Endpoints
 
-### Hardware Detection
+Defined in `components/web_server/` — **available only when the web server is started** (not automatic in current `main.c`).
 
-```bash
-# Get hardware status and pin config
-GET /api/hardware
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/hardware` | GET | Hardware status and pin config |
+| `/api/device/info` | GET | MAC, version, simulation mode |
+| `/api/wifi/config` | POST | Save WiFi credentials |
 
-# Response example (simulation mode)
+Example response for hardware detection:
+
+```json
 {
   "simulation_mode": true,
-  "status": "SIMULATION - No hardware detected",
-  "detected": {
-    "sensor_1": false,
-    "sensor_2": false,
-    "sensor_3": false,
-    "sensor_4": false,
-    "display": false,
-    "fan_1": false,
-    "fan_2": false
-  },
-  "sensor_count": 0,
-  "fan_count": 0,
+  "detected": { "sensor_1": false, "fan_1": false },
   "pin_config": {
-    "i2c": {"sda_gpio": 8, "scl_gpio": 9, "frequency_hz": 100000},
-    "fans": {"fan_1_gpio": 10, "fan_2_gpio": 11, "pwm_freq_hz": 25000}
-  },
-  "instructions": [
-    "SHT40 Sensors: Connect to GPIO 8 (SDA) and GPIO 9 (SCL), 3.3V, GND",
-    "OLED Display: Connect to same I2C bus, address 0x3C or 0x3D",
-    "Fan 1: Connect PWM to GPIO 10",
-    "Fan 2: Connect PWM to GPIO 11"
-  ]
+    "i2c": { "sda_gpio": 8, "scl_gpio": 9 },
+    "fans": { "fan_1_gpio": 10, "fan_2_gpio": 11 }
+  }
 }
 ```
 
-### Device Info
-
-```bash
-GET /api/device/info
-
-# Response
-{
-  "device_name": "ThermoFlow",
-  "mac_address": "XX:XX:XX:XX:XX:XX",
-  "firmware_version": "1.1.0",
-  "platform": "ESP32-S3",
-  "simulation_mode": true,
-  "mode_description": "Running with simulated sensor data"
-}
-```
+---
 
 ## Documentation
 
-- [BUILD.md](BUILD.md) - Build instructions
-- [BUILD_ESP_IDF.md](BUILD_ESP_IDF.md) - Detailed ESP-IDF guide
-- [FTX_EXTENSION.md](docs/FTX_EXTENSION.md) - Mini-FTX build guide
-- [MQTT_FTX_API.md](docs/MQTT_FTX_API.md) - MQTT API for FTX
-- [PROJECT_FRAMEWORK.md](PROJECT_FRAMEWORK.md) - Security framework
-- [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) - Component status
-- [CHANGELOG.md](CHANGELOG.md) - Version history
+| Document | Purpose |
+|----------|---------|
+| [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | Honest component and firmware status |
+| [TODO.md](docs/TODO.md) | Unimplemented features and improvement plan |
+| [BUILD.md](BUILD.md) | Build instructions |
+| [BUILD_ESP_IDF.md](BUILD_ESP_IDF.md) | Detailed ESP-IDF guide |
+| [FTX_EXTENSION.md](docs/FTX_EXTENSION.md) | Mini-FTX design (library, not integrated) |
+| [MQTT_FTX_API.md](docs/MQTT_FTX_API.md) | MQTT API spec |
+| [PROJECT_FRAMEWORK.md](PROJECT_FRAMEWORK.md) | Security requirements and governance |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
+
+---
 
 ## Security
 
-See [PROJECT_FRAMEWORK.md](PROJECT_FRAMEWORK.md) for security requirements.
+ThermoFlow targets IEC 62443 SL-2. See [PROJECT_FRAMEWORK.md](PROJECT_FRAMEWORK.md).
 
-## Status
+**Known issues (see [TODO.md](docs/TODO.md)):**
+- Private signing keys must not be stored in the repository
+- Ed25519 implementation is a placeholder
+- WiFi credential encryption has stub code paths
+- HTTPS is not active in the current web server build
 
-✅ **Complete** - All core components implemented  
-✅ **Hardware Detection** - Auto-detect + simulation mode (v1.1.0)  
-✅ **Mini-FTX** - Full FTX support (v1.4.0)  
-✅ **Modern Web GUI** - SPA with PWA (v1.5.0)
+---
 
-See [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for detailed status.
+## Project Status
+
+| Area | Status |
+|------|--------|
+| Component architecture | ✅ Good structure |
+| `main.c` integration | ⚠️ Partial — core loop only |
+| Hardware I/O (sensors, PWM) | ⚠️ Detection yes, real I/O no |
+| Web / MQTT / FTX | ❌ Not started from main |
+| Security (production-ready) | ❌ Stubs and known issues |
+| Unit tests | ⚠️ 3 suites in runner, more exist |
+
+---
 
 ## License
 
-MIT License - See LICENSE file
+MIT License — see [LICENSE](LICENSE)
 
 ## Author
 
-Ola Andersson - https://github.com/itoaa/ThermoFlow
+Ola Andersson — https://github.com/itoaa/ThermoFlow

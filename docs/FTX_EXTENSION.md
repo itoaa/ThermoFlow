@@ -1,5 +1,7 @@
 # Mini-FTX Extension for ThermoFlow
 
+> **Status (2026-07-12):** Beräkningslogiken finns i `components/heat_recovery/` men är **inte integrerad i `main.c`**. MQTT och webb-API för FTX startas inte automatiskt. Se [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) och [TODO.md](TODO.md).
+
 ## Översikt
 
 Denna utökning lägger till stöd för **mini-FTX** (Frånluftsventilation med värmeåtervinning) i ThermoFlow-systemet.

@@ -2,11 +2,15 @@
 
 ## Security & Development Governance Framework
 
-**Version:** 1.0.0  
-**Date:** 2026-03-22  
+**Version:** 1.1.0  
+**Date:** 2026-07-12  
 **Classification:** Internal  
 **Framework Owner:** Ola Andersson  
-**Security Compliance:** IEC 62443 SL-2, CERT C  
+**Security Compliance:** IEC 62443 SL-2 (target), CERT C  
+
+> **Implementation note:** This framework describes requirements and target architecture.  
+> Actual firmware status is documented in [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md).  
+> Gaps and improvement plan: [docs/TODO.md](docs/TODO.md).
 
 ---
 
@@ -17,7 +21,7 @@
 | Attribute | Value |
 |-----------|-------|
 | **Name** | ThermoFlow |
-| **Version** | 1.0.0 |
+| **Firmware Version** | 1.2.0 (`main/main.c`) |
 | **Purpose** | ESP32-based climate monitoring and control system for mobile AC units and DIY heat exchangers with humidity management and fan control |
 | **Application Domain** | Home automation, HVAC monitoring, energy efficiency |
 | **Criticality Level** | IEC 62443 Security Level 2 (SL-2) |
@@ -198,10 +202,11 @@ ThermoFlow/
 - **Verification:** Hardware-in-loop testing
 
 ### SR-010: Environmental Limits (Anti-Kondens) (NEW)
-- **Requirement:** Fan operation prohibited at high humidity
-- **Threshold:** >90% RH → automatic fan shutdown + alert
-- **Hysteresis:** Fans resume at <85% RH
-- **Alert:** MQTT notification to Home Assistant
+- **Requirement:** Fan operation must follow safe humidity rules at high RH
+- **Threshold:** >90% RH → alert (behaviour depends on use case)
+- **Hysteresis:** Alert clears at <85% RH
+- **Alert:** MQTT notification to Home Assistant (when MQTT is integrated)
+- **Implementation note (2026-07-12):** `anti_condensation` detects alerts correctly, but `main.c` currently sets fans to 100% on alert while this document previously specified shutdown. Resolve per operating mode — see [docs/TODO.md](docs/TODO.md).
 
 ### SR-011: OTA Security (NEW)
 - **Requirement:** Firmware updates MUST be cryptographically signed
@@ -273,15 +278,18 @@ Refs: #123
 
 ### Required Documents
 
-| Document | Purpose |
-|----------|---------|
-| PROJECT_FRAMEWORK.md | This document |
-| CHANGELOG.md | Version history |
-| README.md | Setup and usage |
-| docs/architecture/system.md | System design |
-| docs/security/threat-model.md | STRIDE analysis |
-| docs/api/mqtt.md | MQTT API spec |
-| docs/api/rest.md | REST API spec (if applicable) |
+| Document | Purpose | Status |
+|----------|---------|--------|
+| PROJECT_FRAMEWORK.md | This document | ✅ Exists |
+| CHANGELOG.md | Version history | ✅ Exists |
+| README.md | Setup and usage | ✅ Exists |
+| docs/IMPLEMENTATION_STATUS.md | Honest implementation status | ✅ Exists |
+| docs/TODO.md | Gaps and improvement plan | ✅ Exists |
+| docs/FTX_EXTENSION.md | Mini-FTX design | ✅ Exists |
+| docs/MQTT_FTX_API.md | MQTT API spec | ✅ Exists |
+| docs/architecture/system.md | System design | ❌ Not created |
+| docs/security/threat-model.md | STRIDE analysis | ❌ Referenced but missing |
+| docs/api/rest.md | REST API spec | ⚠️ Partially covered in web_server code |
 
 ---
 
@@ -309,5 +317,5 @@ See `docs/security/threat-model.md`
 
 ---
 
-**Next Review:** 2026-06-22  
+**Next Review:** 2026-09-12  
 **Project Owner:** Ola Andersson

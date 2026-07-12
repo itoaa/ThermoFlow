@@ -46,9 +46,11 @@ idf.py -p /dev/ttyUSB0 flash
 
 ## Versioner
 
-| Version | Datum | Commit | Beskrivning |
-|---------|-------|--------|-------------|
-| 1.4.0 | 2026-04-03 | 884bc0f | Mini-FTX med fan speed limits |
+| Version | Datum | Beskrivning |
+|---------|-------|-------------|
+| 1.2.0 | 2026-04-13 | Motsvarar `main.c` — OTA init, hardware detection, simulation mode |
+
+> Binärerna kan vara äldre än källkoden. Kontrollera alltid `THERMOFLOW_VERSION` i `main/main.c` och [IMPLEMENTATION_STATUS.md](../docs/IMPLEMENTATION_STATUS.md).
 
 ## Bygga själv
 
