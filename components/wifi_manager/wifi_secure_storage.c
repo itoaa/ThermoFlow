@@ -446,31 +446,227 @@ esp_err_t wifi_secure_audit_storage(void)
     return ESP_OK;
 }
 
-/* ============================================
- * Stub Functions for ESP-IDF v5.1.2 Compatibility
- * ============================================ */
+#define WIFI_ENC_IV_LEN           16
+#define WIFI_ENC_HMAC_LEN         32
+#define WIFI_ENC_HEADER_LEN       (WIFI_SALT_LEN + WIFI_ENC_IV_LEN)
+
+static esp_err_t derive_key_for_salt(const uint8_t *salt, uint8_t *key, size_t key_len)
+{
+    return derive_encryption_key(key, key_len, salt);
+}
+
+static esp_err_t encrypt_credential(const char *plaintext, uint8_t *ciphertext,
+                                     size_t *out_len, size_t max_len)
+{
+    if (!plaintext || !ciphertext || !out_len) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    size_t plain_len = strlen(plaintext);
+    if (plain_len == 0 || plain_len >= max_len) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    size_t required = WIFI_ENC_HEADER_LEN + plain_len + 16 + WIFI_ENC_HMAC_LEN;
+    if (max_len < required) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    uint8_t salt[WIFI_SALT_LEN];
+    uint8_t iv[WIFI_ENC_IV_LEN];
+    esp_fill_random(salt, sizeof(salt));
+    esp_fill_random(iv, sizeof(iv));
+
+    uint8_t key[WIFI_DERIVED_KEY_LEN];
+    esp_err_t err = derive_key_for_salt(salt, key, sizeof(key));
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    mbedtls_cipher_context_t ctx;
+    mbedtls_cipher_init(&ctx);
+
+    if (mbedtls_cipher_setup(&ctx, mbedtls_cipher_info_from_type(MBEDTLS_CIPHER_AES_256_CBC)) != 0) {
+        mbedtls_cipher_free(&ctx);
+        return ESP_FAIL;
+    }
+
+    if (mbedtls_cipher_setkey(&ctx, key, 256, MBEDTLS_ENCRYPT) != 0) {
+        mbedtls_cipher_free(&ctx);
+        return ESP_FAIL;
+    }
+
+    if (mbedtls_cipher_set_iv(&ctx, iv, sizeof(iv)) != 0) {
+        mbedtls_cipher_free(&ctx);
+        return ESP_FAIL;
+    }
+
+    size_t offset = 0;
+    memcpy(ciphertext + offset, salt, sizeof(salt));
+    offset += sizeof(salt);
+    memcpy(ciphertext + offset, iv, sizeof(iv));
+    offset += sizeof(iv);
+
+    size_t olen = 0;
+    size_t cipher_cap = max_len - offset - WIFI_ENC_HMAC_LEN;
+    if (mbedtls_cipher_update(&ctx, (const uint8_t *)plaintext, plain_len,
+                              ciphertext + offset, &olen) != 0) {
+        mbedtls_cipher_free(&ctx);
+        return ESP_FAIL;
+    }
+    offset += olen;
+
+    size_t finish_len = 0;
+    if (mbedtls_cipher_finish(&ctx, ciphertext + offset, &finish_len) != 0) {
+        mbedtls_cipher_free(&ctx);
+        return ESP_FAIL;
+    }
+    offset += finish_len;
+    mbedtls_cipher_free(&ctx);
+
+    uint8_t hmac[WIFI_ENC_HMAC_LEN];
+    err = calculate_hmac(ciphertext, offset, key, sizeof(key), hmac);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    memcpy(ciphertext + offset, hmac, sizeof(hmac));
+    offset += sizeof(hmac);
+    *out_len = offset;
+    return ESP_OK;
+}
+
+static esp_err_t decrypt_credential(const uint8_t *encrypted, size_t enc_len,
+                                     char *plaintext, size_t plain_len)
+{
+    if (!encrypted || !plaintext || enc_len <= WIFI_ENC_HEADER_LEN + WIFI_ENC_HMAC_LEN) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    const uint8_t *salt = encrypted;
+    const uint8_t *iv = encrypted + WIFI_SALT_LEN;
+    size_t cipher_len = enc_len - WIFI_ENC_HEADER_LEN - WIFI_ENC_HMAC_LEN;
+    const uint8_t *cipher = encrypted + WIFI_ENC_HEADER_LEN;
+    const uint8_t *stored_hmac = encrypted + WIFI_ENC_HEADER_LEN + cipher_len;
+
+    uint8_t key[WIFI_DERIVED_KEY_LEN];
+    esp_err_t err = derive_key_for_salt(salt, key, sizeof(key));
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    uint8_t hmac[WIFI_ENC_HMAC_LEN];
+    err = calculate_hmac(encrypted, WIFI_ENC_HEADER_LEN + cipher_len,
+                         key, sizeof(key), hmac);
+    if (err != ESP_OK || !constant_time_compare(hmac, stored_hmac, sizeof(hmac))) {
+        ESP_LOGE(TAG, "Credential HMAC verification failed");
+        return ESP_ERR_INVALID_CRC;
+    }
+
+    mbedtls_cipher_context_t ctx;
+    mbedtls_cipher_init(&ctx);
+
+    if (mbedtls_cipher_setup(&ctx, mbedtls_cipher_info_from_type(MBEDTLS_CIPHER_AES_256_CBC)) != 0) {
+        mbedtls_cipher_free(&ctx);
+        return ESP_FAIL;
+    }
+
+    if (mbedtls_cipher_setkey(&ctx, key, 256, MBEDTLS_DECRYPT) != 0) {
+        mbedtls_cipher_free(&ctx);
+        return ESP_FAIL;
+    }
+
+    if (mbedtls_cipher_set_iv(&ctx, iv, WIFI_ENC_IV_LEN) != 0) {
+        mbedtls_cipher_free(&ctx);
+        return ESP_FAIL;
+    }
+
+    size_t olen = 0;
+    if (mbedtls_cipher_update(&ctx, cipher, cipher_len, (uint8_t *)plaintext, &olen) != 0) {
+        mbedtls_cipher_free(&ctx);
+        return ESP_FAIL;
+    }
+
+    size_t finish_len = 0;
+    if (mbedtls_cipher_finish(&ctx, (uint8_t *)plaintext + olen, &finish_len) != 0) {
+        mbedtls_cipher_free(&ctx);
+        return ESP_FAIL;
+    }
+
+    mbedtls_cipher_free(&ctx);
+
+    size_t total = olen + finish_len;
+    if (total >= plain_len) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    plaintext[total] = '\0';
+    return ESP_OK;
+}
 
 bool wifi_secure_has_credentials(void)
 {
-    /* Stub - returns false to indicate no credentials */
-    return false;
+    if (!s_initialized) {
+        return false;
+    }
+
+    nvs_handle_t handle;
+    if (nvs_open(WIFI_ENC_NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) {
+        return false;
+    }
+
+    size_t len = 0;
+    esp_err_t err = nvs_get_blob(handle, WIFI_ENC_KEY_SSID, NULL, &len);
+    nvs_close(handle);
+    return (err == ESP_OK && len > 0);
 }
 
 esp_err_t wifi_secure_migrate_from_legacy(void)
 {
-    /* Stub - nothing to migrate in compatibility mode */
-    ESP_LOGW(TAG, "Legacy credential migration not implemented in compatibility mode");
-    return ESP_OK;
-}
+    if (!s_initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
 
-static esp_err_t decrypt_credential(const uint8_t *encrypted, size_t enc_len, char *plaintext, size_t plain_len)
-{
-    /* Stub - simply copy for compatibility mode (NOT SECURE!) */
-    ESP_LOGW(TAG, "Decryption stub used - this is NOT SECURE!");
-    if (enc_len < plain_len) {
-        memcpy(plaintext, encrypted, enc_len);
-        plaintext[enc_len] = '\0';
+    if (wifi_secure_has_credentials()) {
         return ESP_OK;
     }
-    return ESP_ERR_INVALID_SIZE;
+
+    nvs_handle_t legacy;
+    esp_err_t err = nvs_open(WIFI_NVS_NAMESPACE, NVS_READONLY, &legacy);
+    if (err != ESP_OK) {
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    char ssid[33] = {0};
+    char password[65] = {0};
+    size_t ssid_len = sizeof(ssid);
+    size_t pass_len = sizeof(password);
+
+    err = nvs_get_str(legacy, WIFI_NVS_KEY_SSID, ssid, &ssid_len);
+    if (err != ESP_OK) {
+        nvs_close(legacy);
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    if (nvs_get_str(legacy, WIFI_NVS_KEY_PASSWORD, password, &pass_len) != ESP_OK) {
+        password[0] = '\0';
+    }
+
+    nvs_close(legacy);
+
+    err = wifi_secure_store_credentials(ssid, password);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    nvs_handle_t wipe;
+    if (nvs_open(WIFI_NVS_NAMESPACE, NVS_READWRITE, &wipe) == ESP_OK) {
+        nvs_erase_key(wipe, WIFI_NVS_KEY_SSID);
+        nvs_erase_key(wipe, WIFI_NVS_KEY_PASSWORD);
+        nvs_commit(wipe);
+        nvs_close(wipe);
+    }
+
+    ESP_LOGI(TAG, "Migrated legacy WiFi credentials to encrypted storage");
+    return ESP_OK;
 }
