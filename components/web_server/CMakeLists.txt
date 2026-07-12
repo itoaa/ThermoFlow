@@ -12,6 +12,8 @@ idf_component_register(
         esp_wifi
         security_utils
         cert_manager
+        rate_limiter
+        audit_log
 )
 
 # Include paths for HTTPS server

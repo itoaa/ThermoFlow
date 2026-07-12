@@ -27,8 +27,22 @@
 #include "hardware_manager.h"
 #include "thermoflow_config.h"
 #include "security_manager.h"
+#include "rate_limiter.h"
+#include "audit_log.h"
 
 static const char *TAG = "WEB_SERVER";
+
+static bool web_rate_limit_check(httpd_req_t *req)
+{
+    if (!rate_limiter_check(RATE_LIMIT_WEB_REQUESTS, NULL)) {
+        audit_log_event(AUDIT_EVENT_RATE_LIMIT_HIT, AUDIT_SEVERITY_WARNING,
+                        "Web rate limit exceeded");
+        httpd_resp_set_status(req, "429 Too Many Requests");
+        httpd_resp_send(req, "Rate limit exceeded", HTTPD_RESP_USE_STRLEN);
+        return false;
+    }
+    return true;
+}
 
 // Server handles
 static httpd_handle_t http_server = NULL;
@@ -804,6 +818,9 @@ bool web_server_get_ftx_data(heat_recovery_data_t *data)
 // GET /api/ftx - Main FTX data
 static esp_err_t ftx_api_handler(httpd_req_t *req)
 {
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
     add_security_headers(req);
     
     cJSON *root = cJSON_CreateObject();
@@ -1090,6 +1107,9 @@ static esp_err_t wifi_config_handler(httpd_req_t *req)
 // GET /api/device/info - Return device info (MAC, name, etc.)
 static esp_err_t device_info_handler(httpd_req_t *req)
 {
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
     add_security_headers(req);
     
     cJSON *root = cJSON_CreateObject();
