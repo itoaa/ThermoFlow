@@ -29,26 +29,3 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
 
 # Disable OTA rollback (requires secure boot efuse state)
 # CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE is not set
-
-# TLS client-only (HTTPS server disabled in CI)
-# CONFIG_MBEDTLS_TLS_SERVER_AND_CLIENT is not set
-CONFIG_MBEDTLS_TLS_CLIENT_ONLY=y
-
-# Drop TLS 1.3 for CI image size
-# CONFIG_MBEDTLS_SSL_PROTO_TLS1_3 is not set
-
-# Trim curves; security_manager uses SECP256R1
-# CONFIG_MBEDTLS_ECP_DP_SECP384R1_ENABLED is not set
-# CONFIG_MBEDTLS_ECP_DP_CURVE25519_ENABLED is not set
-
-# security_manager still needs X509 write APIs
-CONFIG_MBEDTLS_X509_CRT_WRITE_C=y
-CONFIG_MBEDTLS_X509_CSR_WRITE_C=y
-CONFIG_MBEDTLS_HKDF_C=y
-CONFIG_MBEDTLS_AES_C=y
-
-# Smaller logs in CI (max must equal default when default is WARN)
-# CONFIG_LOG_DEFAULT_LEVEL_INFO is not set
-CONFIG_LOG_DEFAULT_LEVEL_WARN=y
-# CONFIG_LOG_MAXIMUM_LEVEL_INFO is not set
-CONFIG_LOG_MAXIMUM_EQUALS_DEFAULT=y
