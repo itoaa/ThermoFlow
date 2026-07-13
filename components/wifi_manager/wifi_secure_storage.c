@@ -297,19 +297,19 @@ static esp_err_t calculate_hmac(const uint8_t *data, size_t data_len,
         return ESP_FAIL;
     }
 
-    ret = mbedtls_md_hmac_starts_ret(&ctx, key, key_len);
+    ret = mbedtls_md_hmac_starts(&ctx, key, key_len);
     if (ret != 0) {
         mbedtls_md_free(&ctx);
         return ESP_FAIL;
     }
 
-    ret = mbedtls_md_hmac_update_ret(&ctx, data, data_len);
+    ret = mbedtls_md_hmac_update(&ctx, data, data_len);
     if (ret != 0) {
         mbedtls_md_free(&ctx);
         return ESP_FAIL;
     }
 
-    ret = mbedtls_md_hmac_finish_ret(&ctx, hmac);
+    ret = mbedtls_md_hmac_finish(&ctx, hmac);
     mbedtls_md_free(&ctx);
 
     return (ret == 0) ? ESP_OK : ESP_FAIL;
