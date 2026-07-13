@@ -48,11 +48,7 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
 
 # Disable weak ciphers
 CONFIG_MBEDTLS_DES_C=n
-CONFIG_MBEDTLS_RC4_DISABLED=y
 CONFIG_MBEDTLS_SSL_RENEGOTIATION=n
-
-# I2C/Driver
-CONFIG_I2C_ENABLE_DEBUG_LOG=n
 
 # Flash size (adjust for your board)
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
@@ -75,9 +71,9 @@ CONFIG_NVS_ENCRYPTION=y
 # Secure Boot V2 (SEC-024)
 # ============================================
 
-# Enable Secure Boot V2 (RSA)
+# Enable Secure Boot V2 (RSA, auto-selected on ESP32-S3)
 CONFIG_SECURE_BOOT=y
-CONFIG_SECURE_BOOT_V2_RSA=y
+CONFIG_SECURE_BOOT_V2_ENABLED=y
 
 # Build signed binaries during build
 CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=y
@@ -142,9 +138,6 @@ CONFIG_SECURE_UART_ROM_DL_MODE_ENABLED=y
 # ============================================
 # Additional Security Features
 # ============================================
-
-# Enable hardware secure boot
-CONFIG_ESP_SECURE_BOOT_V2_RSA=y
 
 # FÖRBÄTTRING: JTAG är aktiverat för debugging
 # VARNING: Inaktivera för produktion för att förhindra fysisk debugging!

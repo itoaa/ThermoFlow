@@ -14,17 +14,12 @@ idf_component_register(
         freertos
 )
 
-# Include path for mbedtls
-include_directories(${COMPONENT_LIB} PRIVATE
-    "$ENV{IDF_PATH}/components/mbedtls/mbedtls/include"
-)
-
 # Set compile options for OTA security features
 target_compile_options(${COMPONENT_LIB} PRIVATE
     -DOTA_SECURE_HTTPS_REQUIRED=1
 )
 
-if(CONFIG_SECURE_BOOT_V2_RSA)
+if(CONFIG_SECURE_BOOT_V2_ENABLED)
     message(STATUS "OTA Manager: Secure Boot V2 RSA enabled")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE
         -DOTA_SECURE_BOOT_V2_ENABLED=1

@@ -16,6 +16,8 @@
 #include "web_server.h"
 #include "esp_log.h"
 #include "esp_http_server.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 // #include "esp_https_server.h" // DISABLED for ESP-IDF v5.1.2 compatibility
 #include "esp_wifi.h"
 #include "esp_tls.h"
