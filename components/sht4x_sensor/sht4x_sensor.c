@@ -4,6 +4,7 @@
  */
 
 #include <string.h>
+#include <stdlib.h>
 #include <math.h>
 #include "sht4x_sensor.h"
 #include "driver/i2c.h"

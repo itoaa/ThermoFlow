@@ -6,6 +6,7 @@
 #include "heat_recovery.h"
 #include "esp_timer.h"  // For esp_timer_get_time() in microseconds
 #include <math.h>
+#include <stdlib.h>
 
 static float s_core_efficiency = FTX_CORE_EFFICIENCY_DEFAULT;
 static uint64_t s_frost_activation_time_us = 0;

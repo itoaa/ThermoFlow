@@ -621,6 +621,19 @@ bool wifi_secure_has_credentials(void)
     return (err == ESP_OK && len > 0);
 }
 
+esp_err_t wifi_secure_get_status(bool *encrypted, wifi_key_source_t *key_source)
+{
+    if (!encrypted) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    *encrypted = s_initialized && wifi_secure_has_credentials();
+    if (key_source) {
+        *key_source = s_key_source;
+    }
+    return ESP_OK;
+}
+
 esp_err_t wifi_secure_migrate_from_legacy(void)
 {
     if (!s_initialized) {
