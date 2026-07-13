@@ -13,6 +13,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "driver/i2c.h"
 #include "thermoflow_version.h"
 
 /**
