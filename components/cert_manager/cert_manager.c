@@ -224,7 +224,7 @@ static esp_err_t generate_self_signed_cert(const char *device_id,
     
     // Serial number: device ID hash
     uint8_t serial[32];
-    mbedtls_sha256((const unsigned char *)device_id, strlen(device_id), serial, 0);
+    mbedtls_sha256_ret((const unsigned char *)device_id, strlen(device_id), serial, 0);
     ret = mbedtls_x509write_crt_set_serial_raw(&crt, serial, 20);
     if (ret != 0) {
         ESP_LOGE(TAG, "Failed to set serial: %d", ret);
@@ -623,7 +623,7 @@ esp_err_t cert_manager_get_status(cert_manager_status_t *status)
             
             // Calculate fingerprint
             uint8_t hash[32];
-            mbedtls_sha256((const unsigned char *)cert.cert_pem, cert.cert_len, hash, 0);
+            mbedtls_sha256_ret((const unsigned char *)cert.cert_pem, cert.cert_len, hash, 0);
             
             for (int i = 0; i < 32; i++) {
                 sprintf(&status->fingerprint[i * 2], "%02X", hash[i]);

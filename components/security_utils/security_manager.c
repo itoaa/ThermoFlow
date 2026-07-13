@@ -25,6 +25,7 @@
 #include "mbedtls/x509_crt.h"
 #include "mbedtls/entropy.h"
 #include "mbedtls/ctr_drbg.h"
+#include "mbedtls/md.h"
 #include "mbedtls/sha256.h"
 #include "mbedtls/pem.h"
 
@@ -124,9 +125,9 @@ esp_err_t security_hash_password(const char *password, const uint8_t *salt,
     
     mbedtls_md_init(&ctx);
     mbedtls_md_setup(&ctx, md_info, 1);
-    mbedtls_md_hmac_starts(&ctx, salt, salt_len);
-    mbedtls_md_hmac_update(&ctx, (const uint8_t*)password, strlen(password));
-    mbedtls_md_hmac_finish(&ctx, hash);
+    mbedtls_md_hmac_starts_ret(&ctx, salt, salt_len);
+    mbedtls_md_hmac_update_ret(&ctx, (const uint8_t*)password, strlen(password));
+    mbedtls_md_hmac_finish_ret(&ctx, hash);
     mbedtls_md_free(&ctx);
 
     return ESP_OK;
@@ -403,9 +404,9 @@ esp_err_t security_calc_cert_fingerprint(const char *cert, uint8_t *fingerprint)
 
     mbedtls_sha256_context ctx;
     mbedtls_sha256_init(&ctx);
-    mbedtls_sha256_starts(&ctx, 0);
-    mbedtls_sha256_update(&ctx, (const unsigned char*)cert, strlen(cert));
-    mbedtls_sha256_finish(&ctx, fingerprint);
+    mbedtls_sha256_starts_ret(&ctx, 0);
+    mbedtls_sha256_update_ret(&ctx, (const unsigned char*)cert, strlen(cert));
+    mbedtls_sha256_finish_ret(&ctx, fingerprint);
     mbedtls_sha256_free(&ctx);
     
     return ESP_OK;

@@ -10,6 +10,7 @@
 #include "esp_ota_ops.h"
 #include "esp_app_format.h"
 #include "esp_partition.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>

@@ -7,6 +7,7 @@ idf_component_register(
         esp-tls
         mbedtls
         json
+        security_utils
     PRIV_REQUIRES
         freertos
 )

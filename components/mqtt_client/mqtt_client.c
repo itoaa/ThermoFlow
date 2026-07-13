@@ -28,6 +28,7 @@
 #include "freertos/semphr.h"
 #include "cJSON.h"
 #include <string.h>
+#include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <inttypes.h>
@@ -183,19 +184,19 @@ static esp_err_t extract_spki_hash(const mbedtls_x509_crt *cert, uint8_t *hash_o
     mbedtls_sha256_context sha256;
     mbedtls_sha256_init(&sha256);
     
-    ret = mbedtls_sha256_starts(&sha256, 0);
+    ret = mbedtls_sha256_starts_ret(&sha256, 0);
     if (ret != 0) {
         mbedtls_sha256_free(&sha256);
         return ESP_FAIL;
     }
     
-    ret = mbedtls_sha256_update(&sha256, pk_start, pk_len);
+    ret = mbedtls_sha256_update_ret(&sha256, pk_start, pk_len);
     if (ret != 0) {
         mbedtls_sha256_free(&sha256);
         return ESP_FAIL;
     }
     
-    ret = mbedtls_sha256_finish(&sha256, hash_out);
+    ret = mbedtls_sha256_finish_ret(&sha256, hash_out);
     mbedtls_sha256_free(&sha256);
     
     if (ret != 0) {
@@ -277,19 +278,19 @@ static esp_err_t calc_cert_hash_der(const uint8_t *cert_der, size_t cert_len, ui
     mbedtls_sha256_context sha256;
     mbedtls_sha256_init(&sha256);
     
-    int ret = mbedtls_sha256_starts(&sha256, 0);
+    int ret = mbedtls_sha256_starts_ret(&sha256, 0);
     if (ret != 0) {
         mbedtls_sha256_free(&sha256);
         return ESP_FAIL;
     }
     
-    ret = mbedtls_sha256_update(&sha256, cert_der, cert_len);
+    ret = mbedtls_sha256_update_ret(&sha256, cert_der, cert_len);
     if (ret != 0) {
         mbedtls_sha256_free(&sha256);
         return ESP_FAIL;
     }
     
-    ret = mbedtls_sha256_finish(&sha256, hash);
+    ret = mbedtls_sha256_finish_ret(&sha256, hash);
     mbedtls_sha256_free(&sha256);
     
     return (ret == 0) ? ESP_OK : ESP_FAIL;
