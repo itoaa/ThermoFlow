@@ -1,7 +1,7 @@
 #!/bin/bash
 set -o pipefail
 
-export SDKCONFIG_DEFAULTS=sdkconfig.defaults:sdkconfig.ci.defaults
+export SDKCONFIG_DEFAULTS=sdkconfig.ci.defaults
 
 idf.py build 2>&1 | tee build.log
 status=${PIPESTATUS[0]}
