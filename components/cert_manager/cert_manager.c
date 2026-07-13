@@ -49,9 +49,18 @@ static cert_manager_config_t s_config = {
     .enable_auto_renewal = true
 };
 
+/* CN= + device_id + ,O= + org + ,C= + country + NUL */
+#define CERT_MGR_SUBJECT_NAME_LEN (8 + CERT_MGR_DEVICE_ID_LEN + 64 + 3)
+
 /* ============================================
  * Internal Helper Functions
  * ============================================ */
+
+static void build_subject_name(char *buf, size_t buf_len, const char *device_id)
+{
+    snprintf(buf, buf_len, "CN=%s,O=%s,C=%s",
+             device_id, s_config.org, s_config.country);
+}
 
 /**
  * @brief Generate RSA key pair
@@ -148,9 +157,8 @@ static esp_err_t generate_csr_internal(const char *device_id,
     mbedtls_x509write_csr_set_md_alg(&csr, s_config.signature_alg);
     
     // Build subject name
-    char subject_name[128];
-    snprintf(subject_name, sizeof(subject_name), "CN=%s,O=%s,C=%s",
-             device_id, s_config.org, s_config.country);
+    char subject_name[CERT_MGR_SUBJECT_NAME_LEN];
+    build_subject_name(subject_name, sizeof(subject_name), device_id);
     
     ret = mbedtls_x509write_csr_set_subject_name(&csr, subject_name);
     if (ret != 0) {
@@ -213,9 +221,8 @@ static esp_err_t generate_self_signed_cert(const char *device_id,
     }
     
     // Build subject name
-    char subject_name[128];
-    snprintf(subject_name, sizeof(subject_name), "CN=%s,O=%s,C=%s",
-             device_id, s_config.org, s_config.country);
+    char subject_name[CERT_MGR_SUBJECT_NAME_LEN];
+    build_subject_name(subject_name, sizeof(subject_name), device_id);
     
     // Set certificate attributes
     mbedtls_x509write_crt_set_subject_name(&crt, subject_name);
