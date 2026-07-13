@@ -103,10 +103,10 @@ typedef enum {
 #define SECURITY_LOCKOUT_DURATION     300     // seconds
 #define SECURITY_REQUIRE_HTTPS        1
 
-// Rate limiting (SR-006)
-#define RATE_LIMIT_WEB_REQUESTS       10      // per second
-#define RATE_LIMIT_MQTT_MESSAGES      100     // per second
-#define RATE_LIMIT_LOGIN_ATTEMPTS       5       // per minute
+// Rate limiting defaults (SR-006) — names prefixed to avoid collision with rate_limiter.h enum
+#define TF_CFG_RATE_LIMIT_WEB_RPS       10      // per second
+#define TF_CFG_RATE_LIMIT_MQTT_RPS      100     // per second
+#define TF_CFG_RATE_LIMIT_LOGIN_RPM       5       // per minute
 
 // Logging configuration (SR-005)
 #define LOG_BUFFER_SIZE               4096

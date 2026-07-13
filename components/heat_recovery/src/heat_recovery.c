@@ -73,19 +73,18 @@ frost_protection_state_t ftx_check_frost_hysteresis(
             }
             return FROST_STATE_WARNING;
             
-        case FROST_STATE_ACTIVE:
-            // Minimum runtime check (60 seconds)
+        case FROST_STATE_ACTIVE: {
             uint64_t elapsed_ms = (current_time_us - s_frost_activation_time_us) / 1000;
             if (elapsed_ms < FTX_FROST_MIN_RUNTIME_MS) {
-                return FROST_STATE_ACTIVE;  // Keep active for minimum time
+                return FROST_STATE_ACTIVE;
             }
-            
-            // Deactivate only with hysteresis
-            if (outdoor_temp > FTX_FROST_HYSTERESIS_TEMP || 
+
+            if (outdoor_temp > FTX_FROST_HYSTERESIS_TEMP ||
                 exhaust_rh < FTX_FROST_HYSTERESIS_RH) {
                 return FROST_STATE_IDLE;
             }
             return FROST_STATE_ACTIVE;
+        }
     }
     
     return FROST_STATE_IDLE;

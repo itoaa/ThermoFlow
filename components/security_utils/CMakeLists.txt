@@ -5,6 +5,7 @@ idf_component_register(
         mbedtls 
         nvs_flash
         esp_event
+        esp_hw_support
     PRIV_REQUIRES
         esp_timer
 )
@@ -12,7 +13,6 @@ idf_component_register(
 # Set compile options for security features
 target_compile_options(${COMPONENT_LIB} PRIVATE
     -DMBEDTLS_CONFIG_FILE="mbedtls/esp_config.h"
-    -DCONFIG_MBEDTLS_TLS_VERSION_TLS1_3
 )
 
 # Security hardening flags

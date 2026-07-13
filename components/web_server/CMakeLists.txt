@@ -3,6 +3,7 @@ idf_component_register(
     INCLUDE_DIRS "include"
     REQUIRES 
         freertos
+        esp_netif
         esp_http_server
         esp_https_server
         esp-tls

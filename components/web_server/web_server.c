@@ -18,6 +18,7 @@
 #include "esp_http_server.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_netif.h"
 // #include "esp_https_server.h" // DISABLED for ESP-IDF v5.1.2 compatibility
 #include "esp_wifi.h"
 #include "esp_tls.h"
@@ -79,7 +80,6 @@ static esp_err_t add_security_headers(httpd_req_t *req);
 static void register_all_handlers(httpd_handle_t server);
 static esp_err_t load_certificates_from_nvs(void);
 static void free_certificate_cache(void);
-static const int* get_secure_ciphersuites(void);
 
 /* ============================================
  * Configuration Functions
@@ -199,29 +199,6 @@ static esp_err_t add_security_headers(httpd_req_t *req)
     httpd_resp_set_hdr(req, "Permissions-Policy", "geolocation=(), microphone=(), camera=()");
     
     return ESP_OK;
-}
-
-static const int* get_secure_ciphersuites(void)
-{
-    // Secure cipher suites for TLS 1.3 and TLS 1.2
-    // Only AEAD ciphers, no weak algorithms
-    static const int secure_ciphers[] = {
-        // TLS 1.3 ciphers (preferred)
-        MBEDTLS_TLS1_3_AES_256_GCM_SHA384,
-        MBEDTLS_TLS1_3_CHACHA20_POLY1305_SHA256,
-        MBEDTLS_TLS1_3_AES_128_GCM_SHA256,
-        
-        // TLS 1.2 ECDHE with AEAD ciphers
-        MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-        MBEDTLS_TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-        MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-        MBEDTLS_TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-        MBEDTLS_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
-        MBEDTLS_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-        
-        0  // Terminator
-    };
-    return secure_ciphers;
 }
 
 /* ============================================
