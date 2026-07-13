@@ -9,15 +9,17 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: espressif/idf:release-v5.1
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v5
 
       - name: Build firmware
-        run: |
-          idf.py set-target esp32s3
-          idf.py build
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: release-v5.1
+          target: esp32s3
+          path: '.'
 
       - name: Run unit tests (host build check)
         run: |
