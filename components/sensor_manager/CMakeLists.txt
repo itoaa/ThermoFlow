@@ -5,3 +5,5 @@ idf_component_register(
 )
 
 target_include_directories(${COMPONENT_LIB} PRIVATE "${CMAKE_SOURCE_DIR}/include")
+
+target_link_libraries(${COMPONENT_LIB} PRIVATE m)
