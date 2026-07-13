@@ -20,6 +20,7 @@ jobs:
           esp_idf_version: release-v5.1
           target: esp32s3
           path: '.'
+          command: SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci.defaults" idf.py build
 
       - name: Run unit tests (host build check)
         run: |
