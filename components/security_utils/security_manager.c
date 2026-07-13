@@ -27,6 +27,7 @@
 #include "mbedtls/ctr_drbg.h"
 #include "mbedtls/md.h"
 #include "mbedtls/sha256.h"
+#include "mbedtls/ecp.h"
 #include "mbedtls/pem.h"
 
 static const char *TAG = "SECURITY";
@@ -649,7 +650,6 @@ esp_err_t security_generate_certificate(char *cert, size_t cert_len,
     mbedtls_pk_context pk;
     mbedtls_entropy_context entropy;
     mbedtls_ctr_drbg_context ctr_drbg;
-    mbedtls_mpi serial;
     
     const char *pers = "gen_self_signed";
     
@@ -657,7 +657,6 @@ esp_err_t security_generate_certificate(char *cert, size_t cert_len,
     mbedtls_pk_init(&pk);
     mbedtls_entropy_init(&entropy);
     mbedtls_ctr_drbg_init(&ctr_drbg);
-    mbedtls_mpi_init(&serial);
     
     // Initialize RNG
     int ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
@@ -733,7 +732,6 @@ esp_err_t security_generate_certificate(char *cert, size_t cert_len,
     ret = 0;
     
 cleanup:
-    mbedtls_mpi_free(&serial);
     mbedtls_pk_free(&pk);
     mbedtls_x509write_crt_free(&crt);
     mbedtls_ctr_drbg_free(&ctr_drbg);
