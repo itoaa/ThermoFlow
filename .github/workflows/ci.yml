@@ -22,7 +22,7 @@ jobs:
           esp_idf_version: release-v5.1
           target: esp32s3
           path: '.'
-          command: "SDKCONFIG_DEFAULTS=sdkconfig.defaults:sdkconfig.ci.defaults idf.py build > build.log 2>&1 || (echo '=== BUILD FAILED ===' && grep -E 'error:|undefined reference|ninja: build stopped|fatal error|overflowed|will not fit' build.log | tail -n 40 && tail -n 80 build.log && exit 1)"
+          command: bash .github/ci-build.sh
 
       - name: Show build log tail
         if: failure()
@@ -58,6 +58,12 @@ jobs:
             } catch (err) {
               summary += `No build.log available (${err.message})`;
             }
+
+            const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+            if (summaryPath) {
+              fs.appendFileSync(summaryPath, summary + '\n');
+            }
+
             await github.rest.repos.createCommitComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -66,6 +72,7 @@ jobs:
             });
 
       - name: Run unit tests (host build check)
+        if: success()
         run: |
           echo "Unity tests are executed on-device via tests/test_main.c"
           test -f tests/test_heat_recovery.c
