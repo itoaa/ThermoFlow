@@ -14,18 +14,13 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v5
 
-      - name: Prepare CI signing key
-        run: |
-          mkdir -p keys
-          openssl genrsa -out keys/secure_boot_signing_key.pem 3072
-
       - name: Build firmware
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: release-v5.1
           target: esp32s3
           path: '.'
-          command: SDKCONFIG_DEFAULTS=sdkconfig.defaults:sdkconfig.ci.defaults idf.py build > build.log 2>&1 || (echo "=== BUILD FAILED ===" && tail -n 100 build.log && exit 1)
+          command: SDKCONFIG_DEFAULTS=sdkconfig.ci.defaults idf.py build > build.log 2>&1 || (echo "=== BUILD FAILED ===" && tail -n 100 build.log && exit 1)
 
       - name: Show build log tail
         if: failure()
