@@ -13,7 +13,6 @@ idf_component_register(
         hardware_manager
         esp_wifi
         security_utils
-        cert_manager
         rate_limiter
         audit_log
 )
