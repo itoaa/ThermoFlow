@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repo
@@ -35,6 +37,33 @@ jobs:
           name: build-log
           path: build.log
           if-no-files-found: ignore
+
+      - name: Publish build failure summary
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let summary = '## ThermoFlow CI build failed\n\n';
+            try {
+              const log = fs.readFileSync('build.log', 'utf8');
+              const errorLines = log.split('\n').filter((line) =>
+                /error:|undefined reference|ninja: build stopped|fatal error|overflowed|will not fit/i.test(line)
+              );
+              if (errorLines.length > 0) {
+                summary += '### Errors\n\n```text\n' + errorLines.slice(-40).join('\n') + '\n```\n\n';
+              }
+              const tail = log.split('\n').slice(-120).join('\n');
+              summary += '### Log tail (last 120 lines)\n\n```text\n' + tail + '\n```';
+            } catch (err) {
+              summary += `No build.log available (${err.message})`;
+            }
+            await github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: summary,
+            });
 
       - name: Run unit tests (host build check)
         run: |
