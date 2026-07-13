@@ -1,6 +1,8 @@
 build/
 sdkconfig
 sdkconfig.*
+!sdkconfig.defaults
+!sdkconfig.ci.defaults
 *.elf
 *.bin
 *.map

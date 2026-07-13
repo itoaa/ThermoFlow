@@ -1,0 +1,10 @@
+#
+# CI build overrides (applied after sdkconfig.defaults)
+# Private signing keys are not in the repository — disable Secure Boot
+# signing so GitHub Actions can compile and link firmware.
+#
+
+# CONFIG_SECURE_BOOT is not set
+# CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES is not set
+# CONFIG_SECURE_FLASH_ENC_ENABLED is not set
+# CONFIG_SECURE_SIGNED_ON_UPDATE is not set
