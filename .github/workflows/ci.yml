@@ -25,7 +25,13 @@ jobs:
           esp_idf_version: release-v5.1
           target: esp32s3
           path: '.'
-          command: SDKCONFIG_DEFAULTS=sdkconfig.defaults:sdkconfig.ci.defaults idf.py build
+          command: SDKCONFIG_DEFAULTS=sdkconfig.defaults:sdkconfig.ci.defaults idf.py build 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
+
+      - name: Show build log tail
+        if: failure()
+        run: |
+          echo "=== Last 120 lines of build.log ==="
+          tail -n 120 build.log || true
 
       - name: Run unit tests (host build check)
         run: |
