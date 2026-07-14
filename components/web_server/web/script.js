@@ -27,6 +27,7 @@ const state = {
 
 // Chart instances
 let tempChart = null;
+let pollTimer = null;
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -73,7 +74,7 @@ function init() {
     
     // Start data fetching
     fetchAll();
-    setInterval(fetchAll, state.updateInterval);
+    startPolling();
     
     // Handle visibility change
     document.addEventListener('visibilitychange', () => {
@@ -350,16 +351,31 @@ async function fetchAPI(endpoint, options = {}) {
     }
 }
 
+function startPolling() {
+    if (pollTimer) {
+        clearInterval(pollTimer);
+    }
+    pollTimer = setInterval(fetchAll, state.updateInterval);
+}
+
 async function fetchAll() {
-    await Promise.all([
+    const tasks = [
         fetchDashboard(),
         fetchSensors(),
         fetchFTX(),
         fetchDeviceInfo(),
         fetchOtaStatus(),
         fetchHardwareMode()
-    ]);
-    
+    ];
+
+    if (state.currentView === 'logs') {
+        tasks.push(fetchLogs({ silent: true }));
+    } else if (state.currentView === 'sensors') {
+        tasks.push(fetchSensorsDetail());
+    }
+
+    await Promise.all(tasks);
+
     state.connected = true;
     updateConnectionStatus();
 }
@@ -638,7 +654,9 @@ function getDemoLogs() {
     };
 }
 
-async function fetchLogs() {
+async function fetchLogs(options = {}) {
+    const { silent = false } = options;
+
     if (DEMO_MODE) {
         renderLogs(getDemoLogs());
         return;
@@ -646,7 +664,9 @@ async function fetchLogs() {
 
     const data = await fetchAPI('/logs');
     if (!data) {
-        showToast('Kunde inte hämta loggdata från enheten', 'error');
+        if (!silent) {
+            showToast('Kunde inte hämta loggdata från enheten', 'error');
+        }
         return;
     }
     renderLogs(data);
@@ -960,6 +980,7 @@ function setupSettings() {
         intervalSlider.addEventListener('change', (e) => {
             state.updateInterval = parseInt(e.target.value) * 1000;
             localStorage.setItem('updateInterval', state.updateInterval);
+            startPolling();
             showToast(`Uppdateringsintervall: ${e.target.value}s`, 'success');
         });
     }
