@@ -2,6 +2,12 @@
 set -o pipefail
 
 export SDKCONFIG_DEFAULTS=sdkconfig.ci.defaults
+export BUILD_NUMBER="${GITHUB_RUN_NUMBER:-0}"
+export GIT_SHA="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
+export CHANNEL="${THERMOFLOW_CHANNEL:-stable}"
+export REVISION="${THERMOFLOW_REVISION:-1}"
+
+python3 scripts/generate_version.py
 
 idf.py build 2>&1 | tee build.log
 status=${PIPESTATUS[0]}

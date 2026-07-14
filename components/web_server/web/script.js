@@ -254,7 +254,14 @@ function mockDemoApi(endpoint, options = {}) {
                 device_name: 'ThermoFlow-DEMO',
                 default_name: 'ThermoFlow-DEMO',
                 mac_address: '44:1B:F6:8C:14:40',
-                firmware_version: '1.3.0',
+                firmware_version: '2026.29.1',
+                version_full: '2026.29.1',
+                version_year: 2026,
+                version_week: 29,
+                version_revision: 1,
+                build_number: 0,
+                git_sha: 'demo',
+                channel: 'demo',
                 ip_address: '127.0.0.1',
                 wifi_state: 'connected',
                 simulation_mode: true
@@ -487,13 +494,22 @@ const otaStateLabels = {
     unknown: 'Okänd'
 };
 
+function formatFirmwareVersion(data) {
+    const version = data.version_full || data.firmware_version;
+    if (!version) return '--';
+    if (data.channel && data.channel !== 'stable') {
+        return `${version} (${data.channel})`;
+    }
+    return version;
+}
+
 async function fetchDeviceInfo() {
     const data = await fetchAPI('/device/info');
     if (!data) return;
     
     document.getElementById('device-name').textContent = data.device_name || data.default_name || 'ThermoFlow';
     document.getElementById('device-mac').textContent = data.mac_address || '--:--:--:--:--:--';
-    document.getElementById('firmware-version').textContent = data.firmware_version || '--';
+    document.getElementById('firmware-version').textContent = formatFirmwareVersion(data);
     document.getElementById('device-ip').textContent = data.ip_address || '--';
     document.getElementById('wifi-state').textContent =
         wifiStateLabels[data.wifi_state] || wifiStateLabels.unknown;

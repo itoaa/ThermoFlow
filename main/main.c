@@ -425,7 +425,8 @@ void app_main(void)
 {
     g_boot_time_ms = esp_log_timestamp();
 
-    ESP_LOGI(TAG, "ThermoFlow %s on ESP32-S3", THERMOFLOW_VERSION_STRING);
+    ESP_LOGI(TAG, "ThermoFlow %s (%s, %s) on ESP32-S3",
+             THERMOFLOW_VERSION_STRING, THERMOFLOW_VERSION_FULL, THERMOFLOW_CHANNEL);
 
     ESP_ERROR_CHECK(init_nvs());
 

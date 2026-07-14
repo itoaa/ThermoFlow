@@ -56,6 +56,19 @@ static bool web_rate_limit_check(httpd_req_t *req)
     return true;
 }
 
+static void add_firmware_version_fields(cJSON *root)
+{
+    cJSON_AddStringToObject(root, "firmware_version", THERMOFLOW_VERSION_STRING);
+    cJSON_AddStringToObject(root, "version_full", THERMOFLOW_VERSION_FULL);
+    cJSON_AddNumberToObject(root, "version_year", THERMOFLOW_VERSION_YEAR);
+    cJSON_AddNumberToObject(root, "version_week", THERMOFLOW_VERSION_WEEK);
+    cJSON_AddNumberToObject(root, "version_revision", THERMOFLOW_VERSION_REVISION);
+    cJSON_AddNumberToObject(root, "build_number", THERMOFLOW_BUILD_NUMBER);
+    cJSON_AddStringToObject(root, "git_sha", THERMOFLOW_GIT_SHA);
+    cJSON_AddStringToObject(root, "channel", THERMOFLOW_CHANNEL);
+    cJSON_AddNumberToObject(root, "security_version", THERMOFLOW_SECURITY_VERSION);
+}
+
 // Server handles
 static httpd_handle_t http_server = NULL;
 static httpd_handle_t https_server = NULL;
@@ -1522,7 +1535,7 @@ static esp_err_t ota_status_handler(httpd_req_t *req)
         cJSON_AddStringToObject(root, "state", "unavailable");
     }
 
-    cJSON_AddStringToObject(root, "firmware_version", THERMOFLOW_VERSION_STRING);
+    add_firmware_version_fields(root);
     cJSON_AddBoolToObject(root, "server_configured", OTA_SERVER_URL[0] != '\0');
     if (OTA_SERVER_URL[0] != '\0') {
         cJSON_AddStringToObject(root, "update_url", OTA_SERVER_URL);
@@ -1577,7 +1590,7 @@ static esp_err_t device_info_handler(httpd_req_t *req)
     cJSON_AddBoolToObject(root, "https_running", https_running);
     
     // Firmware version and platform
-    cJSON_AddStringToObject(root, "firmware_version", THERMOFLOW_VERSION_STRING);
+    add_firmware_version_fields(root);
     cJSON_AddStringToObject(root, "platform", "ESP32-S3");
     cJSON_AddBoolToObject(root, "ota_available", OTA_SERVER_URL[0] != '\0');
     
