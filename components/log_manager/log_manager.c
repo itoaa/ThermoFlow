@@ -410,7 +410,7 @@ esp_err_t log_manager_init(const tf_log_config_t *config)
         s_log.config = *config;
     } else {
         s_log.config.sinks = TF_LOG_SINK_SERIAL | TF_LOG_SINK_WEB | TF_LOG_SINK_NVS;
-        s_log.config.min_level = TF_LOG_LEVEL_INFO;
+        s_log.config.min_level = TF_LOG_LEVEL_WARN;
         s_log.config.min_serial_level = TF_LOG_LEVEL_WARN;
         s_log.config.serial_json = false;
         s_log.config.nvs_persist = true;
@@ -687,18 +687,26 @@ static esp_err_t export_entries(bool ndjson, char *buffer, size_t buffer_len, si
         return ESP_ERR_INVALID_ARG;
     }
 
-    tf_log_entry_t entries[TF_LOG_DEFAULT_CAPACITY];
+    tf_log_entry_t *entries = calloc(TF_LOG_DEFAULT_CAPACITY, sizeof(tf_log_entry_t));
+    if (!entries) {
+        return ESP_ERR_NO_MEM;
+    }
+
     uint32_t count = 0;
     esp_err_t ret = log_manager_get_recent(entries, TF_LOG_DEFAULT_CAPACITY, &count);
     if (ret != ESP_OK) {
+        free(entries);
         return ret;
     }
 
     size_t offset = 0;
+    esp_err_t err = ESP_OK;
+
     if (!ndjson) {
         int n = snprintf(buffer + offset, buffer_len - offset, "{\"logs\":[");
         if (n < 0 || (size_t)n >= buffer_len - offset) {
-            return ESP_ERR_NO_MEM;
+            err = ESP_ERR_NO_MEM;
+            goto done;
         }
         offset += (size_t)n;
     }
@@ -709,7 +717,8 @@ static esp_err_t export_entries(bool ndjson, char *buffer, size_t buffer_len, si
         if (!ndjson) {
             if (i > 0) {
                 if (offset + 1 >= buffer_len) {
-                    return ESP_ERR_NO_MEM;
+                    err = ESP_ERR_NO_MEM;
+                    goto done;
                 }
                 buffer[offset++] = ',';
             }
@@ -719,14 +728,16 @@ static esp_err_t export_entries(bool ndjson, char *buffer, size_t buffer_len, si
                 line_len--;
             }
             if (offset + line_len >= buffer_len) {
-                return ESP_ERR_NO_MEM;
+                err = ESP_ERR_NO_MEM;
+                goto done;
             }
             memcpy(buffer + offset, line, line_len);
             offset += line_len;
         } else {
             size_t line_len = strlen(line);
             if (offset + line_len >= buffer_len) {
-                return ESP_ERR_NO_MEM;
+                err = ESP_ERR_NO_MEM;
+                goto done;
             }
             memcpy(buffer + offset, line, line_len);
             offset += line_len;
@@ -736,13 +747,17 @@ static esp_err_t export_entries(bool ndjson, char *buffer, size_t buffer_len, si
     if (!ndjson) {
         int n = snprintf(buffer + offset, buffer_len - offset, "],\"count\":%lu}", (unsigned long)count);
         if (n < 0 || (size_t)n >= buffer_len - offset) {
-            return ESP_ERR_NO_MEM;
+            err = ESP_ERR_NO_MEM;
+            goto done;
         }
         offset += (size_t)n;
     }
 
     *exported_len = offset;
-    return ESP_OK;
+
+done:
+    free(entries);
+    return err;
 }
 
 esp_err_t log_manager_export_json(char *buffer, size_t buffer_len, size_t *exported_len)

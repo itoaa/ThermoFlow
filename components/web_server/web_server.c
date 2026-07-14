@@ -1644,10 +1644,16 @@ static esp_err_t logs_get_handler(httpd_req_t *req)
     }
     add_security_headers(req);
 
-    audit_log_entry_t entries[TF_LOG_DEFAULT_CAPACITY];
+    audit_log_entry_t *entries = calloc(TF_LOG_DEFAULT_CAPACITY, sizeof(audit_log_entry_t));
+    if (!entries) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+
     uint32_t count = 0;
     esp_err_t ret = audit_log_get_recent(entries, TF_LOG_DEFAULT_CAPACITY, &count);
     if (ret != ESP_OK) {
+        free(entries);
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Log read failed");
         return ESP_FAIL;
     }
@@ -1661,6 +1667,7 @@ static esp_err_t logs_get_handler(httpd_req_t *req)
     for (uint32_t i = 0; i < count; i++) {
         add_log_entry_json(logs, &entries[i], now_us);
     }
+    free(entries);
 
     tf_log_stats_t lm_stats = {0};
     log_manager_get_stats(&lm_stats);

@@ -70,7 +70,7 @@ esp_err_t audit_log_init(const audit_log_config_t *config)
 {
     tf_log_config_t lm_cfg = {
         .sinks = TF_LOG_SINK_SERIAL | TF_LOG_SINK_WEB | TF_LOG_SINK_NVS,
-        .min_level = TF_LOG_LEVEL_INFO,
+        .min_level = TF_LOG_LEVEL_WARN,
         .min_serial_level = TF_LOG_LEVEL_WARN,
         .serial_json = false,
         .nvs_persist = true,

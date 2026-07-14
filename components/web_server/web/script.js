@@ -645,7 +645,10 @@ async function fetchLogs() {
     }
 
     const data = await fetchAPI('/logs');
-    if (!data) return;
+    if (!data) {
+        showToast('Kunde inte hämta loggdata från enheten', 'error');
+        return;
+    }
     renderLogs(data);
 }
 
@@ -669,7 +672,7 @@ async function fetchLogConfig() {
 async function saveLogConfig() {
     const sinks = Array.from(document.querySelectorAll('.log-sink:checked')).map(cb => cb.value);
     const body = {
-        min_level: document.getElementById('log-min-level')?.value || 'INFO',
+        min_level: document.getElementById('log-min-level')?.value || 'WARN',
         serial_json: !!document.getElementById('log-serial-json')?.checked,
         sinks
     };
