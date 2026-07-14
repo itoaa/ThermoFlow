@@ -254,13 +254,13 @@ function mockDemoApi(endpoint, options = {}) {
                 device_name: 'ThermoFlow-DEMO',
                 default_name: 'ThermoFlow-DEMO',
                 mac_address: '44:1B:F6:8C:14:40',
-                firmware_version: '42',
-                version_full: '42',
+                firmware_version: '2026.29.42',
+                version_full: '2026.29.42',
                 version_scheme: 'build',
                 calver: '2026.29.1',
                 version_year: 2026,
                 version_week: 29,
-                version_revision: 1,
+                version_revision: 42,
                 build_number: 42,
                 git_sha: 'demo',
                 channel: 'demo',
@@ -497,12 +497,6 @@ const otaStateLabels = {
 };
 
 function formatFirmwareVersion(data) {
-    if (data.version_scheme === 'build' && data.build_number > 0) {
-        return `Build ${data.build_number}`;
-    }
-    if (data.firmware_version === 'dev') {
-        return 'dev (lokal)';
-    }
     const version = data.version_full || data.firmware_version;
     if (!version) return '--';
     if (data.channel && data.channel !== 'stable') {
