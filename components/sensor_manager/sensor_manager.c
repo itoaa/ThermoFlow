@@ -5,12 +5,14 @@
 
 #include <string.h>
 #include <math.h>
+#include <stdint.h>
 #include <esp_random.h>
 #include "sensor_manager.h"
 #include "hardware_manager.h"
 #include "sht4x_sensor.h"
 #include "thermoflow_config.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 static const char *TAG = "SENSOR_MGR";
 
@@ -45,16 +47,29 @@ static void generate_simulated_data(sensor_manager_data_t *data)
 
     memset(data, 0, sizeof(*data));
 
-    float temp_base[4] = {18.5f, 12.3f, 22.1f, 8.7f};
-    float humidity_base[4] = {45.0f, 68.5f, 48.0f, 82.0f};
+    /* Demo profile: realistic Swedish FTX scenario with slow daily variation */
+    uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+    float day_phase = (float)(now_s % 86400) / 86400.0f * 6.2831853f;
+    float hour_wobble = sinf((float)(now_s % 3600) / 3600.0f * 6.2831853f) * 0.4f;
+    uint32_t rand_val = esp_random();
+    float noise = ((float)(rand_val & 0xFF) / 255.0f - 0.5f) * 0.3f;
+
+    float outdoor_temp = 2.0f + 9.0f * sinf(day_phase - 1.2f) + hour_wobble + noise;
+    float extract_temp = 20.5f + 1.2f * sinf(day_phase + 0.4f) + noise * 0.5f;
+    float exhaust_temp = extract_temp + 1.8f;
+    float supply_temp = outdoor_temp + (exhaust_temp - outdoor_temp) * 0.82f;
+
+    float outdoor_rh = 78.0f - 18.0f * sinf(day_phase);
+    float extract_rh = 42.0f + 6.0f * sinf(day_phase + 0.8f);
+    float exhaust_rh = extract_rh - 4.0f;
+    float supply_rh = outdoor_rh - 12.0f;
+
+    float temps[4] = {supply_temp, extract_temp, exhaust_temp, outdoor_temp};
+    float humidity[4] = {supply_rh, extract_rh, exhaust_rh, outdoor_rh};
 
     for (int i = 0; i < 4; i++) {
-        uint32_t rand_val = esp_random();
-        float temp_var = ((float)(rand_val & 0xFF) / 255.0f - 0.5f) * 1.0f;
-        float rh_var = ((float)((rand_val >> 8) & 0xFF) / 255.0f - 0.5f) * 2.0f;
-
-        data->temperature[i] = temp_base[i] + temp_var;
-        data->humidity[i] = humidity_base[i] + rh_var;
+        data->temperature[i] = temps[i];
+        data->humidity[i] = humidity[i];
 
         if (data->humidity[i] < SIM_HUMIDITY_MIN) {
             data->humidity[i] = SIM_HUMIDITY_MIN;
@@ -68,6 +83,7 @@ static void generate_simulated_data(sensor_manager_data_t *data)
     }
 
     data->num_sensors = 4;
+    data->timestamp = now_s;
 }
 
 static esp_err_t init_hardware_sensors(void)

@@ -308,7 +308,19 @@ static void control_task(void *pvParameters)
 
         if (g_ftx_initialized) {
             populate_ftx_from_sensors(&sensor_data, &g_ftx_data);
-            ftx_update(&g_ftx_data);
+            g_ftx_data.efficiency_percent = ftx_calc_efficiency_hysteresis(
+                g_ftx_data.outdoor_temp,
+                g_ftx_data.supply_temp,
+                g_ftx_data.exhaust_temp,
+                g_ftx_data.efficiency_percent);
+            g_ftx_data.energy_recovery_w = ftx_calc_power(
+                g_ftx_data.airflow_supply_m3h,
+                g_ftx_data.supply_temp - g_ftx_data.outdoor_temp);
+            if (ftx_update(&g_ftx_data) == 0) {
+                web_server_update_ftx_data(&g_ftx_data);
+            }
+        } else if (sensor_data.num_sensors > 0) {
+            populate_ftx_from_sensors(&sensor_data, &g_ftx_data);
             web_server_update_ftx_data(&g_ftx_data);
         }
 

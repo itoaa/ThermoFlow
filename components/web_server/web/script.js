@@ -6,6 +6,8 @@
 // Configuration
 const API_BASE = '/api';
 const DEFAULT_UPDATE_INTERVAL = 5000;
+const DEMO_MODE = new URLSearchParams(window.location.search).has('demo') ||
+    localStorage.getItem('thermoflowDemo') === '1';
 
 // State
 const state = {
@@ -32,6 +34,13 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function init() {
+    if (DEMO_MODE) {
+        document.title = 'ThermoFlow | Demo';
+        const brand = document.querySelector('.nav-brand span');
+        if (brand) brand.textContent = 'ThermoFlow Demo';
+        showToast('Demo-läge aktivt — simulerad data', 'info');
+    }
+
     // Apply theme
     applyTheme(state.theme);
     
@@ -165,8 +174,150 @@ function showToast(message, type = 'info') {
     }, 4000);
 }
 
+// Demo data for static hosting (?demo=1 on any web server)
+function generateDemoFtxPayload() {
+    const now = Date.now() / 1000;
+    const dayPhase = ((now % 86400) / 86400) * Math.PI * 2;
+    const hourWobble = Math.sin(((now % 3600) / 3600) * Math.PI * 2) * 0.4;
+    const noise = (Math.random() - 0.5) * 0.3;
+
+    const outdoorTemp = 2 + 9 * Math.sin(dayPhase - 1.2) + hourWobble + noise;
+    const extractTemp = 20.5 + 1.2 * Math.sin(dayPhase + 0.4) + noise * 0.5;
+    const exhaustTemp = extractTemp + 1.8;
+    const supplyTemp = outdoorTemp + (exhaustTemp - outdoorTemp) * 0.82;
+
+    const outdoorRh = 78 - 18 * Math.sin(dayPhase);
+    const extractRh = 42 + 6 * Math.sin(dayPhase + 0.8);
+    const exhaustRh = extractRh - 4;
+    const supplyRh = outdoorRh - 12;
+    const efficiency = Math.max(0, Math.min(100,
+        ((supplyTemp - outdoorTemp) / (exhaustTemp - outdoorTemp)) * 100));
+    const fanSpeed = 35 + Math.round(15 * Math.sin(dayPhase + 0.6));
+
+    return {
+        valid: true,
+        simulation_mode: true,
+        mode: 'SIMULATION',
+        sensors: {
+            outdoor_temp: outdoorTemp,
+            outdoor_rh: outdoorRh,
+            supply_temp: supplyTemp,
+            supply_rh: supplyRh,
+            extract_temp: extractTemp,
+            extract_rh: extractRh,
+            exhaust_temp: exhaustTemp,
+            exhaust_rh: exhaustRh
+        },
+        efficiency: {
+            percent: efficiency,
+            power_recovered_w: Math.max(0, (supplyTemp - outdoorTemp) * 18),
+            airflow_m3h: 120
+        },
+        fans: {
+            supply: fanSpeed,
+            exhaust: fanSpeed
+        }
+    };
+}
+
+function mockDemoApi(endpoint, options = {}) {
+    if (options.method === 'POST') {
+        return { success: true };
+    }
+
+    switch (endpoint) {
+        case '/ftx':
+            return generateDemoFtxPayload();
+        case '/ftx/sensors': {
+            const ftx = generateDemoFtxPayload();
+            return {
+                simulation_mode: true,
+                outdoor_temp: ftx.sensors.outdoor_temp,
+                outdoor_rh: ftx.sensors.outdoor_rh,
+                supply_temp: ftx.sensors.supply_temp,
+                supply_rh: ftx.sensors.supply_rh,
+                extract_temp: ftx.sensors.extract_temp,
+                extract_rh: ftx.sensors.extract_rh,
+                exhaust_temp: ftx.sensors.exhaust_temp,
+                exhaust_rh: ftx.sensors.exhaust_rh
+            };
+        }
+        case '/ftx/status':
+            return {
+                simulation_mode: true,
+                frost_risk: false,
+                bypass_active: false,
+                filter_warning: false
+            };
+        case '/device/info':
+            return {
+                device_name: 'ThermoFlow-DEMO',
+                default_name: 'ThermoFlow-DEMO',
+                mac_address: '44:1B:F6:8C:14:40',
+                firmware_version: '1.3.0',
+                ip_address: '127.0.0.1',
+                wifi_state: 'connected',
+                simulation_mode: true
+            };
+        case '/hardware/mode':
+            return {
+                data_source: 'auto',
+                simulation_mode: true,
+                sensor_count: 0,
+                status: 'SIMULATION - No sensors detected'
+            };
+        case '/ota/status':
+            return {
+                state: 'idle',
+                partition: 'demo',
+                update_method: 'Demo-läge: ingen OTA. Anslut till en riktig ThermoFlow-enhet för uppdateringar.'
+            };
+        default:
+            return { success: true };
+    }
+}
+
+function normalizeFtxData(data) {
+    if (!data) return null;
+    if (data.valid === false) return null;
+    if (data.valid && data.sensors) return data;
+
+    if (data.outdoor_temp !== undefined) {
+        return {
+            valid: true,
+            simulation_mode: data.simulation_mode,
+            mode: data.mode,
+            sensors: {
+                outdoor_temp: data.outdoor_temp,
+                outdoor_rh: data.outdoor_rh,
+                supply_temp: data.supply_temp,
+                supply_rh: data.supply_rh,
+                extract_temp: data.extract_temp,
+                extract_rh: data.extract_rh,
+                exhaust_temp: data.exhaust_temp,
+                exhaust_rh: data.exhaust_rh
+            },
+            efficiency: {
+                percent: data.efficiency_percent || 0,
+                power_recovered_w: data.energy_recovery_w || 0,
+                airflow_m3h: data.airflow_m3h || 120
+            },
+            fans: {
+                supply: data.fan_speed_percent || 0,
+                exhaust: data.fan_speed_percent || 0
+            }
+        };
+    }
+
+    return data.valid ? data : null;
+}
+
 // API Functions
 async function fetchAPI(endpoint, options = {}) {
+    if (DEMO_MODE) {
+        return mockDemoApi(endpoint, options);
+    }
+
     try {
         const response = await fetch(`${API_BASE}${endpoint}`, {
             ...options,
@@ -201,8 +352,9 @@ async function fetchAll() {
 }
 
 async function fetchDashboard() {
-    const data = await fetchAPI('/ftx');
-    if (!data || !data.valid) return;
+    const raw = await fetchAPI('/ftx');
+    const data = normalizeFtxData(raw);
+    if (!data) return;
     
     state.ftx = data;
     
@@ -221,9 +373,12 @@ async function fetchDashboard() {
         document.getElementById('ftx-efficiency').textContent = data.efficiency.percent.toFixed(1);
     }
     
-    if (data.fans) {
-        document.getElementById('power-saved').textContent = 
-            Math.round(data.fans.supply * 0.5); // Mock calculation
+    if (data.efficiency && data.efficiency.power_recovered_w) {
+        document.getElementById('power-saved').textContent =
+            Math.round(data.efficiency.power_recovered_w);
+    } else if (data.fans) {
+        document.getElementById('power-saved').textContent =
+            Math.round(data.fans.supply * 0.5);
     }
     
     // Update chart
@@ -238,10 +393,10 @@ async function fetchSensors() {
 }
 
 async function fetchFTX() {
-    const data = await fetchAPI('/ftx');
+    const data = normalizeFtxData(await fetchAPI('/ftx'));
     const status = await fetchAPI('/ftx/status');
     
-    if (data && data.valid) {
+    if (data) {
         // Update flow diagram
         if (data.sensors) {
             document.getElementById('ftx-outdoor-temp').textContent = 

@@ -946,24 +946,35 @@ bool web_server_get_ftx_data(heat_recovery_data_t *data)
  * API Handlers (with security headers)
  * ============================================ */
 
-// GET /api/ftx - Main FTX data
-static esp_err_t ftx_api_handler(httpd_req_t *req)
+static void add_ftx_sensor_fields(cJSON *root, bool include_flat_fields)
 {
-    if (!web_rate_limit_check(req)) {
-        return ESP_FAIL;
+    if (!s_ftx_data_valid) {
+        return;
     }
-    add_security_headers(req);
-    
-    cJSON *root = cJSON_CreateObject();
-    
-    // Add simulation mode status
-    cJSON_AddBoolToObject(root, "simulation_mode", hardware_is_simulation_mode());
-    cJSON_AddStringToObject(root, "mode", hardware_is_simulation_mode() ? "SIMULATION" : "HARDWARE");
-    
-    // Add HTTPS info
-    cJSON_AddBoolToObject(root, "https_enabled", web_server_is_https_running());
-    
-    if (s_ftx_data_valid) {
+
+    cJSON *sensors = cJSON_CreateObject();
+    cJSON_AddNumberToObject(sensors, "outdoor_temp", s_ftx_data.outdoor_temp);
+    cJSON_AddNumberToObject(sensors, "outdoor_rh", s_ftx_data.outdoor_rh);
+    cJSON_AddNumberToObject(sensors, "supply_temp", s_ftx_data.supply_temp);
+    cJSON_AddNumberToObject(sensors, "supply_rh", s_ftx_data.supply_rh);
+    cJSON_AddNumberToObject(sensors, "exhaust_temp", s_ftx_data.exhaust_temp);
+    cJSON_AddNumberToObject(sensors, "exhaust_rh", s_ftx_data.exhaust_rh);
+    cJSON_AddNumberToObject(sensors, "extract_temp", s_ftx_data.extract_temp);
+    cJSON_AddNumberToObject(sensors, "extract_rh", s_ftx_data.extract_rh);
+    cJSON_AddItemToObject(root, "sensors", sensors);
+
+    cJSON *efficiency = cJSON_CreateObject();
+    cJSON_AddNumberToObject(efficiency, "percent", s_ftx_data.efficiency_percent);
+    cJSON_AddNumberToObject(efficiency, "power_recovered_w", s_ftx_data.energy_recovery_w);
+    cJSON_AddNumberToObject(efficiency, "airflow_m3h", s_ftx_data.airflow_supply_m3h);
+    cJSON_AddItemToObject(root, "efficiency", efficiency);
+
+    cJSON *fans = cJSON_CreateObject();
+    cJSON_AddNumberToObject(fans, "supply", s_ftx_data.fan_speed_current);
+    cJSON_AddNumberToObject(fans, "exhaust", s_ftx_data.fan_speed_current);
+    cJSON_AddItemToObject(root, "fans", fans);
+
+    if (include_flat_fields) {
         cJSON_AddNumberToObject(root, "outdoor_temp", s_ftx_data.outdoor_temp);
         cJSON_AddNumberToObject(root, "outdoor_rh", s_ftx_data.outdoor_rh);
         cJSON_AddNumberToObject(root, "supply_temp", s_ftx_data.supply_temp);
@@ -975,6 +986,23 @@ static esp_err_t ftx_api_handler(httpd_req_t *req)
         cJSON_AddNumberToObject(root, "efficiency_percent", s_ftx_data.efficiency_percent);
         cJSON_AddNumberToObject(root, "fan_speed_percent", s_ftx_data.fan_speed_current);
     }
+}
+
+// GET /api/ftx - Main FTX data
+static esp_err_t ftx_api_handler(httpd_req_t *req)
+{
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
+    add_security_headers(req);
+    
+    cJSON *root = cJSON_CreateObject();
+    
+    cJSON_AddBoolToObject(root, "valid", s_ftx_data_valid);
+    cJSON_AddBoolToObject(root, "simulation_mode", hardware_is_simulation_mode());
+    cJSON_AddStringToObject(root, "mode", hardware_is_simulation_mode() ? "SIMULATION" : "HARDWARE");
+    cJSON_AddBoolToObject(root, "https_enabled", web_server_is_https_running());
+    add_ftx_sensor_fields(root, true);
     
     return send_json_response(req, root);
 }
