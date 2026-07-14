@@ -233,7 +233,12 @@ static esp_err_t wifi_save_config(void) {
     // Use encrypted storage if available
     if (s_use_encrypted_storage && s_secure_storage_initialized) {
         ESP_LOGI(TAG, "Saving WiFi config with encryption");
-        return wifi_secure_store_credentials(s_wifi_config.ssid, s_wifi_config.password);
+        esp_err_t enc_ret = wifi_secure_store_credentials(s_wifi_config.ssid, s_wifi_config.password);
+        if (enc_ret == ESP_OK) {
+            return ESP_OK;
+        }
+        ESP_LOGW(TAG, "Encrypted save failed (%s), falling back to legacy NVS",
+                 esp_err_to_name(enc_ret));
     }
     
     // Fall back to legacy plaintext storage

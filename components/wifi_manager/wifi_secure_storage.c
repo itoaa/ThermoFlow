@@ -31,6 +31,13 @@ static const char *TAG = "WIFI_SEC";
 /* Key derivation info string */
 static const char *HKDF_INFO = "ThermoFlow WiFi Credentials v1";
 
+#define WIFI_ENC_IV_LEN           16
+#define WIFI_ENC_HMAC_LEN         32
+#define WIFI_ENC_HEADER_LEN       (WIFI_SALT_LEN + WIFI_ENC_IV_LEN)
+/* salt + iv + ciphertext + pkcs7 + hmac for max plaintext (32/63 byte) */
+#define WIFI_ENC_BLOB_SSID_LEN    128
+#define WIFI_ENC_BLOB_PASS_LEN    160
+
 /* Module state */
 static bool s_initialized = false;
 static wifi_key_source_t s_key_source = WIFI_KEY_SOURCE_AUTO;
@@ -175,7 +182,7 @@ esp_err_t wifi_secure_store_credentials(const char *ssid, const char *password)
     }
 
     /* Encrypt SSID */
-    uint8_t encrypted_ssid[WIFI_ENC_MAX_SSID_LEN + WIFI_SALT_LEN] = {0};
+    uint8_t encrypted_ssid[WIFI_ENC_BLOB_SSID_LEN] = {0};
     size_t ssid_len = 0;
     
     err = encrypt_credential(ssid, encrypted_ssid, &ssid_len, sizeof(encrypted_ssid));
@@ -185,7 +192,7 @@ esp_err_t wifi_secure_store_credentials(const char *ssid, const char *password)
     }
 
     /* Encrypt password (if provided) */
-    uint8_t encrypted_pass[WIFI_ENC_MAX_PASS_LEN + WIFI_SALT_LEN] = {0};
+    uint8_t encrypted_pass[WIFI_ENC_BLOB_PASS_LEN] = {0};
     size_t pass_len = 0;
     
     if (password && strlen(password) > 0) {
@@ -240,7 +247,7 @@ esp_err_t wifi_secure_load_credentials(char *ssid, size_t ssid_len,
     }
 
     /* Load and decrypt SSID */
-    uint8_t encrypted_ssid[WIFI_ENC_MAX_SSID_LEN + WIFI_SALT_LEN] = {0};
+    uint8_t encrypted_ssid[WIFI_ENC_BLOB_SSID_LEN] = {0};
     size_t ssid_enc_len = sizeof(encrypted_ssid);
     
     err = nvs_get_blob(handle, WIFI_ENC_KEY_SSID, encrypted_ssid, &ssid_enc_len);
@@ -257,7 +264,7 @@ esp_err_t wifi_secure_load_credentials(char *ssid, size_t ssid_len,
 
     /* Load and decrypt password (if exists) */
     if (password && pass_len > 0) {
-        uint8_t encrypted_pass[WIFI_ENC_MAX_PASS_LEN + WIFI_SALT_LEN] = {0};
+        uint8_t encrypted_pass[WIFI_ENC_BLOB_PASS_LEN] = {0};
         size_t pass_enc_len = sizeof(encrypted_pass);
         
         err = nvs_get_blob(handle, WIFI_ENC_KEY_PASSWORD, encrypted_pass, &pass_enc_len);
@@ -446,10 +453,6 @@ esp_err_t wifi_secure_audit_storage(void)
     return ESP_OK;
 }
 
-#define WIFI_ENC_IV_LEN           16
-#define WIFI_ENC_HMAC_LEN         32
-#define WIFI_ENC_HEADER_LEN       (WIFI_SALT_LEN + WIFI_ENC_IV_LEN)
-
 static esp_err_t derive_key_for_salt(const uint8_t *salt, uint8_t *key, size_t key_len)
 {
     return derive_encryption_key(key, key_len, salt);
@@ -463,12 +466,14 @@ static esp_err_t encrypt_credential(const char *plaintext, uint8_t *ciphertext,
     }
 
     size_t plain_len = strlen(plaintext);
-    if (plain_len == 0 || plain_len >= max_len) {
+    if (plain_len == 0) {
         return ESP_ERR_INVALID_ARG;
     }
 
     size_t required = WIFI_ENC_HEADER_LEN + plain_len + 16 + WIFI_ENC_HMAC_LEN;
     if (max_len < required) {
+        ESP_LOGE(TAG, "Encrypt buffer too small: need %u, have %u (plain %u)",
+                 (unsigned)required, (unsigned)max_len, (unsigned)plain_len);
         return ESP_ERR_NO_MEM;
     }
 
