@@ -56,7 +56,9 @@ static esp_err_t init_nvs(void)
 {
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_LOGW(TAG, "NVS partition needs erase, reformatting...");
+        ESP_LOGW(TAG,
+                 "NVS partition needs erase (%s) — WiFi and other saved settings will be cleared",
+                 esp_err_to_name(ret));
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }

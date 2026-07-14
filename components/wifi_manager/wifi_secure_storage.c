@@ -677,14 +677,6 @@ esp_err_t wifi_secure_migrate_from_legacy(void)
         return err;
     }
 
-    nvs_handle_t wipe;
-    if (nvs_open(WIFI_NVS_NAMESPACE, NVS_READWRITE, &wipe) == ESP_OK) {
-        nvs_erase_key(wipe, WIFI_NVS_KEY_SSID);
-        nvs_erase_key(wipe, WIFI_NVS_KEY_PASSWORD);
-        nvs_commit(wipe);
-        nvs_close(wipe);
-    }
-
-    ESP_LOGI(TAG, "Migrated legacy WiFi credentials to encrypted storage");
+    ESP_LOGI(TAG, "Migrated legacy WiFi credentials to encrypted storage (legacy copy kept)");
     return ESP_OK;
 }

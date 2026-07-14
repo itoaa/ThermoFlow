@@ -103,10 +103,15 @@ echo "Binary: $BINARY_FOUND"
 echo "=========================================="
 echo ""
 
-# Flash
-echo "Erasing and flashing..."
-idf.py -p "$PORT" erase-flash || true
-idf.py -p "$PORT" flash
+# Flash (app-flash preserves NVS: WiFi credentials, device name, etc.)
+if [ "${ERASE_FLASH:-0}" = "1" ]; then
+    echo "Full erase and flash (ERASE_FLASH=1 — wipes NVS)..."
+    idf.py -p "$PORT" erase-flash || true
+    idf.py -p "$PORT" flash
+else
+    echo "App-only flash (NVS preserved; set ERASE_FLASH=1 for full erase)..."
+    idf.py -p "$PORT" app-flash
+fi
 
 echo ""
 echo -e "${GREEN}✓ Flash successful!${NC}"

@@ -121,7 +121,7 @@ esp_err_t wifi_secure_delete_credentials(void);
  * @brief Migrate plaintext credentials to encrypted storage
  * 
  * Checks for legacy plaintext credentials and migrates them
- * to encrypted storage. Original plaintext is securely erased.
+ * to encrypted storage. Legacy copy is kept as NVS backup.
  * 
  * @return ESP_OK if migration successful or no legacy data
  * @return ESP_ERR_NOT_FOUND if no legacy credentials exist

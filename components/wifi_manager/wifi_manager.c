@@ -48,6 +48,8 @@ static bool s_secure_storage_initialized = false;
 /* Forward declarations */
 static esp_err_t wifi_init_nvs(void);
 static esp_err_t wifi_load_config(void);
+static esp_err_t wifi_save_legacy_config(void);
+static esp_err_t wifi_ensure_legacy_backup(void);
 static esp_err_t wifi_save_config(void);
 static void wifi_generate_ap_name(void);
 static esp_err_t wifi_load_device_name(void);
@@ -157,12 +159,12 @@ esp_err_t wifi_manager_init(void) {
 }
 
 static esp_err_t wifi_init_nvs(void) {
+    /* NVS is initialized once in app_main(); avoid a second erase here. */
     esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NOT_INITIALIZED) {
+        ESP_LOGE(TAG, "NVS not initialized before WiFi manager");
     }
-    return ret;
+    return (ret == ESP_ERR_NVS_NOT_INITIALIZED) ? ret : ESP_OK;
 }
 
 static void wifi_generate_ap_name(void) {
@@ -252,6 +254,7 @@ static esp_err_t wifi_load_config(void) {
             if (ret == ESP_OK) {
                 s_wifi_config.configured = true;
                 ESP_LOGI(TAG, "Loaded encrypted WiFi config: SSID=%s", s_wifi_config.ssid);
+                wifi_ensure_legacy_backup();
                 return ESP_OK;
             } else {
                 ESP_LOGE(TAG, "Failed to load encrypted credentials: %s", esp_err_to_name(ret));
@@ -298,43 +301,70 @@ static esp_err_t wifi_load_config(void) {
     return ESP_OK;
 }
 
-static esp_err_t wifi_save_config(void) {
-    // Use encrypted storage if available
-    if (s_use_encrypted_storage && s_secure_storage_initialized) {
-        ESP_LOGI(TAG, "Saving WiFi config with encryption");
-        esp_err_t enc_ret = wifi_secure_store_credentials(s_wifi_config.ssid, s_wifi_config.password);
-        if (enc_ret == ESP_OK) {
-            return ESP_OK;
-        }
-        ESP_LOGW(TAG, "Encrypted save failed (%s), falling back to legacy NVS",
-                 esp_err_to_name(enc_ret));
-    }
-    
-    // Fall back to legacy plaintext storage
-    ESP_LOGW(TAG, "Saving WiFi config without encryption (fallback mode)");
-    
+static esp_err_t wifi_save_legacy_config(void) {
     nvs_handle_t nvs_handle;
     esp_err_t ret = nvs_open(WIFI_NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
     if (ret != ESP_OK) {
         return ret;
     }
-    
+
     ret = nvs_set_str(nvs_handle, WIFI_NVS_KEY_SSID, s_wifi_config.ssid);
     if (ret != ESP_OK) {
         nvs_close(nvs_handle);
         return ret;
     }
-    
+
     ret = nvs_set_str(nvs_handle, WIFI_NVS_KEY_PASSWORD, s_wifi_config.password);
     if (ret != ESP_OK) {
         nvs_close(nvs_handle);
         return ret;
     }
-    
+
     ret = nvs_commit(nvs_handle);
     nvs_close(nvs_handle);
-    
     return ret;
+}
+
+static esp_err_t wifi_ensure_legacy_backup(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(WIFI_NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return wifi_save_legacy_config();
+    }
+
+    char existing[33] = {0};
+    size_t len = sizeof(existing);
+    ret = nvs_get_str(nvs_handle, WIFI_NVS_KEY_SSID, existing, &len);
+    nvs_close(nvs_handle);
+
+    if (ret == ESP_OK && existing[0] != '\0') {
+        return ESP_OK;
+    }
+
+    ESP_LOGI(TAG, "Restoring legacy NVS backup for WiFi credentials");
+    return wifi_save_legacy_config();
+}
+
+static esp_err_t wifi_save_config(void) {
+    if (s_use_encrypted_storage && s_secure_storage_initialized) {
+        ESP_LOGI(TAG, "Saving WiFi config with encryption");
+        esp_err_t enc_ret = wifi_secure_store_credentials(s_wifi_config.ssid, s_wifi_config.password);
+        if (enc_ret == ESP_OK) {
+            esp_err_t legacy_ret = wifi_save_legacy_config();
+            if (legacy_ret != ESP_OK) {
+                ESP_LOGW(TAG, "Encrypted save OK but legacy backup failed: %s",
+                         esp_err_to_name(legacy_ret));
+            } else {
+                ESP_LOGI(TAG, "WiFi credentials also backed up in legacy NVS");
+            }
+            return ESP_OK;
+        }
+        ESP_LOGW(TAG, "Encrypted save failed (%s), falling back to legacy NVS",
+                 esp_err_to_name(enc_ret));
+    }
+
+    ESP_LOGW(TAG, "Saving WiFi config to legacy NVS");
+    return wifi_save_legacy_config();
 }
 
 static esp_err_t wifi_start_ap(void) {
