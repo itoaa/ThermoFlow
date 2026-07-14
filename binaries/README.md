@@ -40,17 +40,22 @@ esptool.py --chip esp32s3 \
     0x8000 partition-table.bin \
     0x10000 ThermoFlow.bin
 
-# Eller använd IDF:
-idf.py -p /dev/ttyUSB0 flash
+# Uppdatera endast app (bevarar NVS/WiFi) — rekommenderat:
+idf.py -p /dev/ttyUSB0 app-flash
+
+# Full flash (raderar NVS):
+idf.py -p /dev/ttyUSB0 erase-flash flash
 ```
+
+Se [docs/WIFI_AND_FLASH.md](../docs/WIFI_AND_FLASH.md) för skillnaden mellan app-flash och erase-flash.
 
 ## Versioner
 
-| Version | Datum | Beskrivning |
-|---------|-------|-------------|
-| 1.2.0 | 2026-04-13 | Motsvarar `main.c` — OTA init, hardware detection, simulation mode |
+Binärerna i denna mapp kan vara äldre än källkoden. Aktuell version:
 
-> Binärerna kan vara äldre än källkoden. Kontrollera alltid `THERMOFLOW_VERSION` i `main/main.c` och [IMPLEMENTATION_STATUS.md](../docs/IMPLEMENTATION_STATUS.md).
+- **CalVer:** `YYYY.WW.BUILD` (t.ex. `2026.29.42`)
+- **Källa:** `include/thermoflow_version.h` (genereras av `scripts/generate_version.py`)
+- **Status:** [IMPLEMENTATION_STATUS.md](../docs/IMPLEMENTATION_STATUS.md)
 
 ## Bygga själv
 

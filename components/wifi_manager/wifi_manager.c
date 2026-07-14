@@ -739,6 +739,23 @@ bool wifi_manager_is_ap_mode(void) {
     return (s_status.state == WIFI_STATE_AP_MODE);
 }
 
+bool wifi_manager_is_ap_fallback_mode(void) {
+    return s_ap_fallback_active;
+}
+
+esp_err_t wifi_manager_get_saved_ssid(char *ssid, size_t len) {
+    if (!ssid || len == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!s_wifi_config.configured || s_wifi_config.ssid[0] == '\0') {
+        ssid[0] = '\0';
+        return ESP_ERR_NOT_FOUND;
+    }
+    strncpy(ssid, s_wifi_config.ssid, len - 1);
+    ssid[len - 1] = '\0';
+    return ESP_OK;
+}
+
 const char* wifi_manager_get_ap_name(void) {
     return s_ap_name;
 }

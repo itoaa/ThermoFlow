@@ -10,6 +10,8 @@ extern const uint8_t web_index_html_start[] asm("_binary_index_html_start");
 extern const uint8_t web_index_html_end[] asm("_binary_index_html_end");
 extern const uint8_t web_wifi_config_html_start[] asm("_binary_wifi_config_html_start");
 extern const uint8_t web_wifi_config_html_end[] asm("_binary_wifi_config_html_end");
+extern const uint8_t web_wifi_reconnect_html_start[] asm("_binary_wifi_reconnect_html_start");
+extern const uint8_t web_wifi_reconnect_html_end[] asm("_binary_wifi_reconnect_html_end");
 extern const uint8_t web_style_css_start[] asm("_binary_style_css_start");
 extern const uint8_t web_style_css_end[] asm("_binary_style_css_end");
 extern const uint8_t web_script_js_start[] asm("_binary_script_js_start");
@@ -35,6 +37,7 @@ typedef struct {
 static const web_static_asset_t s_assets[] = {
     { "/index.html", "text/html", web_index_html_start, web_index_html_end },
     { "/wifi_config.html", "text/html", web_wifi_config_html_start, web_wifi_config_html_end },
+    { "/wifi_reconnect.html", "text/html", web_wifi_reconnect_html_start, web_wifi_reconnect_html_end },
     { "/style.css", "text/css", web_style_css_start, web_style_css_end },
     { "/script.js", "application/javascript", web_script_js_start, web_script_js_end },
     { "/ftx.html", "text/html", web_ftx_html_start, web_ftx_html_end },
@@ -67,9 +70,16 @@ static const web_static_asset_t *find_asset(const char *uri)
 
 static esp_err_t root_handler(httpd_req_t *req)
 {
-    const web_static_asset_t *asset = wifi_manager_is_ap_mode()
-        ? find_asset("/wifi_config.html")
-        : find_asset("/index.html");
+    const web_static_asset_t *asset;
+
+    if (!wifi_manager_has_saved_credentials()) {
+        asset = find_asset("/wifi_config.html");
+    } else if (wifi_manager_is_ap_fallback_mode()) {
+        asset = find_asset("/wifi_reconnect.html");
+    } else {
+        asset = find_asset("/index.html");
+    }
+
     return send_asset(req, asset);
 }
 

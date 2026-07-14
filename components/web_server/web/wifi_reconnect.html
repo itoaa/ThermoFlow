@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ThermoFlow - Ansluter</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container { max-width: 420px; width: 100%; }
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+        }
+        h1 {
+            font-size: 1.6rem;
+            margin-bottom: 12px;
+            background: linear-gradient(90deg, #4ecdc4, #44a08d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle { color: #888; margin-bottom: 24px; font-size: 0.95rem; line-height: 1.5; }
+        .spinner {
+            width: 48px; height: 48px;
+            border: 4px solid rgba(78, 205, 196, 0.2);
+            border-top-color: #4ecdc4;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .network {
+            background: rgba(78, 205, 196, 0.1);
+            border: 1px solid rgba(78, 205, 196, 0.3);
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+            color: #4ecdc4;
+        }
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+        .status.info { background: rgba(78, 205, 196, 0.15); color: #a8e6cf; }
+        .status.success { background: rgba(46, 204, 113, 0.15); color: #2ecc71; }
+        .actions { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+        .btn {
+            display: block;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: none;
+            font-size: 0.95rem;
+            cursor: pointer;
+            text-decoration: none;
+            text-align: center;
+        }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: #ccc;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        .btn-danger {
+            background: rgba(233, 69, 96, 0.15);
+            color: #ff6b6b;
+            border: 1px solid rgba(233, 69, 96, 0.3);
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div id="spinner" class="spinner"></div>
+            <h1>Ansluter till WiFi</h1>
+            <p class="subtitle">
+                Dina WiFi-uppgifter är sparade. Enheten försöker ansluta till ditt nätverk i bakgrunden.
+                Du behöver <strong>inte</strong> göra onboarding igen.
+            </p>
+            <div id="network" class="network">Laddar...</div>
+            <div id="status" class="status info">
+                Väntar på anslutning... Det kan ta upp till 2 minuter efter omstart eller firmware-uppdatering.
+            </div>
+            <div id="success-panel" class="hidden">
+                <div class="status success">
+                    Ansluten! Du kan nu nå enheten på ditt hemmanätverk.
+                </div>
+                <p id="home-ip" class="subtitle"></p>
+            </div>
+            <div class="actions">
+                <a href="/wifi_config.html" class="btn btn-secondary">Byt WiFi-nätverk</a>
+                <button type="button" id="reset-btn" class="btn btn-danger">Återställ WiFi</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let pollTimer = null;
+
+        async function refreshStatus() {
+            try {
+                const response = await fetch('/api/device/info');
+                const data = await response.json();
+                const ssid = data.wifi_saved_ssid || 'ditt sparade nätverk';
+                document.getElementById('network').textContent = 'Nätverk: ' + ssid;
+
+                if (data.wifi_state === 'connected' && data.ip_address && data.ip_address !== '192.168.4.1') {
+                    document.getElementById('spinner').classList.add('hidden');
+                    document.getElementById('status').classList.add('hidden');
+                    document.getElementById('success-panel').classList.remove('hidden');
+                    document.getElementById('home-ip').textContent =
+                        'IP-adress: http://' + data.ip_address;
+                    if (pollTimer) {
+                        clearInterval(pollTimer);
+                        pollTimer = null;
+                    }
+                }
+            } catch (e) {
+                console.log('Status poll failed', e);
+            }
+        }
+
+        document.getElementById('reset-btn').addEventListener('click', async () => {
+            if (!confirm('Återställ WiFi-uppgifter? Enheten startar om i setup-läge.')) {
+                return;
+            }
+            try {
+                await fetch('/api/wifi/config', { method: 'DELETE' });
+            } catch (e) {
+                console.log('Reset failed', e);
+            }
+        });
+
+        refreshStatus();
+        pollTimer = setInterval(refreshStatus, 3000);
+    </script>
+</body>
+</html>

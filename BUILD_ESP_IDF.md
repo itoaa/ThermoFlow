@@ -1,142 +1,117 @@
 # ThermoFlow - Pure ESP-IDF Build
 
-## Overview
+**Senast uppdaterad:** 2026-07-14
 
-This project uses pure ESP-IDF (no PlatformIO). ESP-IDF v5.1+ required.
+Pure ESP-IDF project (no PlatformIO). Requires ESP-IDF v5.1.2+.
 
 ## Project Structure
 
 ```
 ThermoFlow/
-├── CMakeLists.txt              # Project CMakeLists
-├── sdkconfig.defaults         # Default configuration
-├── partitions.csv             # Flash partition table
+├── CMakeLists.txt
+├── sdkconfig.defaults / sdkconfig.ci.defaults
+├── partitions.csv
+├── scripts/generate_version.py   # CalVer header generation
+├── build-local.ps1 / flash-local.ps1   # Windows helpers
+├── build.sh / flash.sh
 ├── main/
-│   ├── CMakeLists.txt         # Main component
-│   └── main.c                 # Application entry
-├── components/                 # ESP-IDF components (10 total)
-│   ├── sht4x_sensor/          # SHT40 I2C driver
-│   ├── fan_control/             # PWM fan control
-│   ├── mqtt_client/            # MQTT over TLS
-│   ├── web_server/             # HTTPS web UI
-│   ├── security_utils/         # Ed25519 + auth
-│   ├── display_driver/         # OLED display
-│   ├── anti_condensation/      # RH protection
-│   ├── sensor_manager/         # Multi-sensor hub
-│   ├── rate_limiter/           # Rate limiting
-│   └── audit_log/              # Audit logging
-└── tests/                      # Unity tests
+│   └── main.c
+├── include/
+│   └── thermoflow_version.h      # Auto-generated — do not edit
+└── components/
+    ├── wifi_manager/             # WiFi + encrypted NVS storage
+    ├── web_server/               # HTTP API + SPA
+    ├── sensor_manager/
+    ├── fan_control/
+    ├── hardware_manager/
+    ├── heat_recovery/
+    ├── mqtt_client/
+    ├── ota_manager/
+    ├── security_utils/
+    ├── audit_log/
+    └── ...
 ```
 
 ## Build Instructions
 
-### Step 1: Install ESP-IDF
+### 1. Install ESP-IDF
 
 ```bash
-cd ~
 git clone -b v5.1.2 --recursive https://github.com/espressif/esp-idf.git
 ./esp-idf/install.sh esp32s3
+. ./esp-idf/export.sh
 ```
 
-### Step 2: Export Environment
+### 2. Build
 
 ```bash
-export IDF_PATH="$HOME/esp-idf"
-. $IDF_PATH/export.sh
-```
-
-Add to `~/.bashrc` for persistence:
-```bash
-echo 'export IDF_PATH="$HOME/esp-idf"' >> ~/.bashrc
-echo '. $IDF_PATH/export.sh' >> ~/.bashrc
-```
-
-### Step 3: Build Project
-
-```bash
-cd /home/ola/.openclaw/workspace/ThermoFlow
-
-# Set target (first time only)
-idf.py set-target esp32s3
-
-# Build
+cd ThermoFlow
+idf.py set-target esp32s3    # first time
 idf.py build
 ```
 
-### Step 4: Flash and Monitor
+Windows: `powershell -ExecutionPolicy Bypass -File build-local.ps1`
+
+### 3. Flash
+
+**Recommended — preserves NVS (WiFi, device name):**
 
 ```bash
-# Flash to device
-idf.py -p /dev/ttyUSB0 flash
+idf.py -p PORT app-flash
+```
 
-# Monitor output
-idf.py -p /dev/ttyUSB0 monitor
+**Full erase (factory reset):**
 
-# Or both at once
-idf.py -p /dev/ttyUSB0 flash monitor
+```bash
+idf.py -p PORT erase-flash flash
+```
+
+Wrapper scripts default to app-flash. Set `ERASE_FLASH=1` for full wipe on Linux/macOS.
+
+### 4. Monitor
+
+```bash
+idf.py -p PORT monitor
 ```
 
 ## Configuration
 
 ```bash
-# Interactive configuration
 idf.py menuconfig
-
-# Or use defaults:
+# or
 cp sdkconfig.defaults sdkconfig
 ```
 
-## Build Outputs
+CI/local Windows builds use `sdkconfig.ci.defaults`.
 
-After successful build:
-- `build/ThermoFlow.bin` - Main application (221 KB)
-- `build/bootloader/bootloader.bin` - Bootloader (21 KB)
-- `build/partition_table/partition-table.bin` - Partition table
+## Versioning
+
+Version header generated before build:
+
+```bash
+python3 scripts/generate_version.py
+```
+
+Format: `YYYY.WW.BUILD` (e.g. `2026.29.42`). See [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ## Testing
 
 ```bash
-# Run unit tests
 idf.py test
-
-# Or specific test
-idf.py test --filter test_sht4x
+idf.py test --filter test_wifi_encryption
 ```
 
 ## Troubleshooting
 
-### Full clean
 ```bash
 idf.py fullclean
 idf.py set-target esp32s3
 idf.py build
 ```
 
-### sdkconfig conflicts
-```bash
-rm sdkconfig
-idf.py set-target esp32s3
-idf.py build
-```
+If `sdkconfig` conflicts: `rm sdkconfig` and rebuild.
 
-### Component not found
-Ensure each component has `CMakeLists.txt`:
-```cmake
-idf_component_register(
-    SRCS "component.c"
-    INCLUDE_DIRS "include"
-    REQUIRES required_component
-)
-```
+## Related docs
 
-## IDE Support
-
-### VS Code
-Install "Espressif IDF" extension. Open project folder, extension auto-detects ESP-IDF structure.
-
-### CLion
-Set CMake options:
-```
--DIDF_PATH=$HOME/esp-idf
--DCMAKE_TOOLCHAIN_FILE=$HOME/esp-idf/tools/cmake/toolchain-esp32s3.cmake
-```
+- [BUILD.md](BUILD.md) — quick start and WiFi
+- [docs/WIFI_AND_FLASH.md](docs/WIFI_AND_FLASH.md) — NVS and onboarding

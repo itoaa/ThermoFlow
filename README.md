@@ -1,148 +1,130 @@
 # ThermoFlow - ESP32-S3 Climate Monitoring and Control System
 
-**Firmware version:** 1.3.0 (`include/thermoflow_version.h`)
+**Firmware version:** `2026.29.BUILD` (CalVer) — se [docs/VERSIONING.md](docs/VERSIONING.md)  
 **Repository:** https://github.com/itoaa/ThermoFlow
 
 ## Overview
 
-ThermoFlow is an ESP32-S3 based system for monitoring temperature and humidity, with optional fan control. Target use cases:
+ThermoFlow is an ESP32-S3 based system for monitoring temperature and humidity, with fan control and optional heat-recovery (FTX) calculations. Target use cases:
 
 - **Mobile AC units** — cold and hot air monitoring
 - **DIY heat exchangers** — fan control based on conditions
 - **Mini-FTX** — ventilation with heat recovery calculations
 
-> Firmware 1.3.0 integrerar alla kärnkomponenter i `main.c`. Kvarvarande arbete: HTTPS i produktion, MQTT/OTA URL-konfiguration, HIL-test. Se [docs/TODO.md](docs/TODO.md).
+> Alla kärnkomponenter körs från `main.c`. HTTP-webbserver startar vid boot. HTTPS faller tillbaka till HTTP tills certifikat är konfigurerade. Se [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) och [docs/TODO.md](docs/TODO.md).
 
 ---
 
-## What works today (firmware 1.3.0)
+## What works today
 
 | Feature | Status |
 |---------|--------|
 | Hardware detection + simulation mode | ✅ |
 | SHT40 sensor reading (hardware mode) | ✅ |
 | PWM fan control (LEDC GPIO 10/11) | ✅ |
-| WiFi manager + encrypted credentials | ✅ |
-| HTTP web server + SPA | ✅ |
+| WiFi manager + encrypted credentials + NVS persistence | ✅ |
+| AP+STA fallback (sparade uppgifter, ingen falsk onboarding) | ✅ |
+| Enhets-ID från MAC + redigerbart visningsnamn | ✅ |
+| HTTP web server + SPA (dashboard, FTX, inställningar, logg) | ✅ |
+| Audit log i webben (`GET /api/logs`) | ✅ |
 | MQTT / FTX (when broker configured) | ✅ |
 | Heat recovery / FTX calculations | ✅ |
 | Anti-condensation (per operating mode) | ✅ |
 | OTA via esp_https_ota + Ed25519 | ✅ |
-| Audit log + rate limiter | ✅ |
+| CalVer versioning (`YYYY.WW.BUILD`) | ✅ |
 | SSD1306 OLED (when detected) | ✅ |
 | HTTPS | ⚠️ Falls back to HTTP |
 | MicroSD logging | ❌ Not implemented |
 
 ---
 
-## Use Cases
+## Quick Start
 
-| Mode | Description | Hardware | Firmware readiness |
-|------|-------------|----------|-------------------|
-| **AC Monitor** | Track mobile AC efficiency | 2–4 sensors | Simulation only |
-| **Heat Exchanger** | Control DIY air-to-air HX | 2 fans + sensors | Partial (no PWM, no real sensors) |
-| **Mini-FTX** | Ventilation with heat recovery | 4 sensors + 2 fans + web UI | Library only, not integrated |
+### Windows (lokal utveckling)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build-local.ps1
+powershell -ExecutionPolicy Bypass -File flash-local.ps1 COM4
+```
+
+`flash-local.ps1` använder **app-flash** — WiFi och inställningar i NVS bevaras.
+
+### Linux / macOS
+
+```bash
+cd ThermoFlow
+./build.sh
+./flash.sh /dev/ttyUSB0    # app-flash (NVS bevaras)
+```
+
+Full erase (raderar WiFi): `ERASE_FLASH=1 ./flash.sh /dev/ttyUSB0`
+
+### Efter flash
+
+1. Enheten försöker ansluta till sparat WiFi (om konfigurerat)
+2. Om setup-AP **ThermoFlow-XXXX** syns: vänta 1–2 minuter — kan vara AP+STA-fallback
+3. Första gången (ingen sparad WiFi): anslut till AP, öppna http://192.168.4.1, ange nätverk
+
+Se [docs/WIFI_AND_FLASH.md](docs/WIFI_AND_FLASH.md) för fullständig guide.
 
 ---
 
-## Features (by implementation state)
+## WiFi och onboarding
 
-### Running in firmware
-- **Hardware detection** — I2C probe for SHT40 and OLED at boot
-- **Simulation mode** — runs without sensors for testing
-- **WiFi Manager** — AP mode `ThermoFlow-XXXX` for initial setup
-- **Anti-condensation** — RH threshold monitoring with hysteresis
-- **Fan control logic** — temperature-based speed in software (no PWM yet)
+| Läge | Vad du ser |
+|------|------------|
+| Ingen sparad WiFi | Onboarding-formulär |
+| Sparad WiFi, ansluter inte än | Sidan **"Ansluter till WiFi"** (inte onboarding) |
+| Ansluten | Dashboard på hemmanätverkets IP |
 
-### Implemented as components (not wired to main)
-- **SHT40 driver** — full I2C driver with CRC (`components/sht4x_sensor/`)
-- **Web server** — HTTP API + modern SPA (`components/web_server/web/`)
-- **MQTT client** — TLS support (`components/mqtt_client/`)
-- **Heat recovery** — FTX calculations, frost protection (`components/heat_recovery/`)
-- **Audit log** — in-memory event log with checksums
-- **Rate limiter** — token bucket per client
-- **Security utils** — certificate management (Ed25519 is placeholder)
+Enhets-ID: `ThermoFlow-XXXX` (XXXX = sista 4 hex av MAC). Visningsnamn ändras under Inställningar.
 
-### Planned / documented but not complete
-- PWM fan output via LEDC
-- Signed OTA updates (Ed25519 stub)
-- HTTPS web server (disabled for ESP-IDF v5.1.2 compatibility)
-- MicroSD logging
-- Full IEC 62443 SL-2 integration
+---
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/device/info` | GET | Enhets-ID, namn, WiFi-status, version |
+| `/api/wifi/config` | POST | Spara WiFi-uppgifter |
+| `/api/wifi/config` | DELETE | Återställ WiFi |
+| `/api/logs` | GET | Audit/systemlogg (senaste 50 händelser) |
+| `/api/logs` | DELETE | Rensa logg |
+| `/api/hardware` | GET | Hårdvarustatus och pin-konfiguration |
+| `/api/sensors` | GET | Sensorvärden |
+| `/api/fans` | GET/POST | Fläktstatus och styrning |
+
+Exempel `GET /api/device/info`:
+
+```json
+{
+  "device_id": "ThermoFlow-1440",
+  "device_name": "ThermoFlow-1440",
+  "wifi_credentials_saved": true,
+  "wifi_ap_fallback": false,
+  "wifi_saved_ssid": "S22",
+  "wifi_state": "connected",
+  "firmware_version": "2026.29.42",
+  "version_full": "2026.29.42+040f567"
+}
+```
 
 ---
 
 ## Hardware
 
 - **MCU:** ESP32-S3 (240 MHz, WiFi + BLE)
-- **Sensors:** Sensirion SHT40 (I2C) — driver exists, not yet used by sensor_manager
-- **Display:** OLED 0.96" I2C (optional) — stub only
-- **Fans:** 2× PWM (GPIO 10/11) — not yet driven in hardware
+- **Sensors:** Sensirion SHT40 (I2C)
+- **Display:** OLED 0.96" I2C (optional)
+- **Fans:** 2× PWM (GPIO 10/11)
 - **Power:** 5 V USB or 5 V/2 A adapter
 
-### Pin Configuration
-
-| Function | GPIO | Notes |
-|----------|------|-------|
-| I2C SDA | GPIO 8 | SHT40 sensors, OLED |
-| I2C SCL | GPIO 9 | SHT40 sensors, OLED |
-| Fan 1 PWM | GPIO 10 | Not yet connected in code |
-| Fan 2 PWM | GPIO 11 | Not yet connected in code |
-
----
-
-## Quick Start
-
-### Flash Pre-built Binary
-
-```bash
-cd ThermoFlow
-./flash.sh /dev/ttyUSB0   # Replace with your port
-```
-
-After flashing:
-1. Device starts in AP mode: `ThermoFlow-XXXX` (last 4 hex of MAC)
-2. Connect to the AP
-3. Configure WiFi (web UI requires `web_server` to be started — see [TODO.md](docs/TODO.md))
-
-> **Note:** The pre-built binary matches `main.c` v1.2.0. The web interface is **not** started automatically in the current firmware.
-
-### Build from Source
-
-Requires ESP-IDF v5.1+ at `$HOME/esp-idf`.
-
-```bash
-cd ThermoFlow
-./build.sh
-./flash.sh /dev/ttyUSB0
-```
-
-See [BUILD.md](BUILD.md) and [BUILD_ESP_IDF.md](BUILD_ESP_IDF.md) for details.
-
----
-
-## API Endpoints
-
-Defined in `components/web_server/` — **available only when the web server is started** (not automatic in current `main.c`).
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/hardware` | GET | Hardware status and pin config |
-| `/api/device/info` | GET | MAC, version, simulation mode |
-| `/api/wifi/config` | POST | Save WiFi credentials |
-
-Example response for hardware detection:
-
-```json
-{
-  "simulation_mode": true,
-  "detected": { "sensor_1": false, "fan_1": false },
-  "pin_config": {
-    "i2c": { "sda_gpio": 8, "scl_gpio": 9 },
-    "fans": { "fan_1_gpio": 10, "fan_2_gpio": 11 }
-  }
-}
-```
+| Function | GPIO |
+|----------|------|
+| I2C SDA | GPIO 8 |
+| I2C SCL | GPIO 9 |
+| Fan 1 PWM | GPIO 10 |
+| Fan 2 PWM | GPIO 11 |
 
 ---
 
@@ -150,14 +132,23 @@ Example response for hardware detection:
 
 | Document | Purpose |
 |----------|---------|
-| [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | Honest component and firmware status |
-| [TODO.md](docs/TODO.md) | Unimplemented features and improvement plan |
-| [BUILD.md](BUILD.md) | Build instructions |
-| [BUILD_ESP_IDF.md](BUILD_ESP_IDF.md) | Detailed ESP-IDF guide |
-| [FTX_EXTENSION.md](docs/FTX_EXTENSION.md) | Mini-FTX design (library, not integrated) |
-| [MQTT_FTX_API.md](docs/MQTT_FTX_API.md) | MQTT API spec |
-| [PROJECT_FRAMEWORK.md](PROJECT_FRAMEWORK.md) | Security requirements and governance |
-| [CHANGELOG.md](CHANGELOG.md) | Version history |
+| [WIFI_AND_FLASH.md](docs/WIFI_AND_FLASH.md) | WiFi, onboarding, app-flash, felsökning |
+| [VERSIONING.md](docs/VERSIONING.md) | CalVer `YYYY.WW.BUILD` |
+| [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | Komponent- och firmwarestatus |
+| [TODO.md](docs/TODO.md) | Kvarvarande arbete |
+| [BUILD.md](BUILD.md) | Bygginstruktioner |
+| [BUILD_ESP_IDF.md](BUILD_ESP_IDF.md) | Detaljerad ESP-IDF-guide |
+| [WiFi_Encryption.md](docs/WiFi_Encryption.md) | SEC-021 krypterad lagring |
+| [CHANGELOG.md](CHANGELOG.md) | Versionshistorik |
+| [PROJECT_FRAMEWORK.md](PROJECT_FRAMEWORK.md) | Säkerhetskrav och styrning |
+
+### Dokumentationsunderhåll
+
+**Vid varje kodändring som påverkar beteende, API eller flash:** uppdatera relevant dokumentation i samma commit/PR. Minst:
+
+- [CHANGELOG.md](CHANGELOG.md) — vad som ändrats
+- Berörd guide (t.ex. [WIFI_AND_FLASH.md](docs/WIFI_AND_FLASH.md))
+- [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) om komponentstatus ändras
 
 ---
 
@@ -167,22 +158,8 @@ ThermoFlow targets IEC 62443 SL-2. See [PROJECT_FRAMEWORK.md](PROJECT_FRAMEWORK.
 
 **Known issues (see [TODO.md](docs/TODO.md)):**
 - Private signing keys must not be stored in the repository
-- Ed25519 implementation is a placeholder
-- WiFi credential encryption has stub code paths
-- HTTPS is not active in the current web server build
-
----
-
-## Project Status
-
-| Area | Status |
-|------|--------|
-| Component architecture | ✅ Good structure |
-| `main.c` integration | ⚠️ Partial — core loop only |
-| Hardware I/O (sensors, PWM) | ⚠️ Detection yes, real I/O no |
-| Web / MQTT / FTX | ❌ Not started from main |
-| Security (production-ready) | ❌ Stubs and known issues |
-| Unit tests | ⚠️ 3 suites in runner, more exist |
+- HTTPS is not active by default in the current web server build
+- Git history may contain old exposed keys — manual cleanup required
 
 ---
 

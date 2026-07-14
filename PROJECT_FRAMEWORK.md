@@ -2,8 +2,8 @@
 
 ## Security & Development Governance Framework
 
-**Version:** 1.1.0  
-**Date:** 2026-07-12  
+**Version:** 1.2.0  
+**Date:** 2026-07-14
 **Classification:** Internal  
 **Framework Owner:** Ola Andersson  
 **Security Compliance:** IEC 62443 SL-2 (target), CERT C  
@@ -21,7 +21,7 @@
 | Attribute | Value |
 |-----------|-------|
 | **Name** | ThermoFlow |
-| **Firmware Version** | 1.2.0 (`main/main.c`) |
+| **Firmware Version** | CalVer `YYYY.WW.BUILD` (e.g. `2026.29.42`) — see [docs/VERSIONING.md](docs/VERSIONING.md) |
 | **Purpose** | ESP32-based climate monitoring and control system for mobile AC units and DIY heat exchangers with humidity management and fan control |
 | **Application Domain** | Home automation, HVAC monitoring, energy efficiency |
 | **Criticality Level** | IEC 62443 Security Level 2 (SL-2) |

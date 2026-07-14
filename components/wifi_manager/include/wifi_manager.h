@@ -181,6 +181,16 @@ bool wifi_manager_has_saved_credentials(void);
 bool wifi_manager_is_ap_mode(void);
 
 /**
+ * @brief Check if AP+STA fallback is active (saved credentials, still retrying home WiFi)
+ */
+bool wifi_manager_is_ap_fallback_mode(void);
+
+/**
+ * @brief Get saved WiFi SSID (empty if none stored)
+ */
+esp_err_t wifi_manager_get_saved_ssid(char *ssid, size_t len);
+
+/**
  * @brief Get the immutable device ID / AP SSID suffix
  *
  * Format: "ThermoFlow-XXXX" where XXXX is last 4 hex digits of MAC.

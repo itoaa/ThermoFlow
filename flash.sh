@@ -116,6 +116,8 @@ fi
 echo ""
 echo -e "${GREEN}✓ Flash successful!${NC}"
 echo ""
+echo "WiFi/NVS preserved (app-flash). If setup AP appears, wait 1-2 min — see docs/WIFI_AND_FLASH.md"
+echo ""
 echo "=========================================="
 echo "Starting monitor..."
 echo -e "${BLUE}Press Ctrl+] to exit${NC}"

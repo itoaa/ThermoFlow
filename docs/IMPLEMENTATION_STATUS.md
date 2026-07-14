@@ -1,12 +1,12 @@
 # ThermoFlow Implementation Status
 
-**Document Version:** 3.0.0  
-**Last Updated:** 2026-07-12  
-**Firmware Version:** 1.3.0
+**Document Version:** 4.0.0  
+**Last Updated:** 2026-07-14  
+**Firmware Version:** CalVer `2026.29.BUILD` (see [VERSIONING.md](VERSIONING.md))
 
 ## Sammanfattning
 
-Firmware **1.3.0** integrerar alla kärnkomponenter i `main.c`. HTTP-webbserver startas vid boot. MQTT ansluter när WiFi är uppe och broker är konfigurerad. HTTPS faller fortfarande tillbaka till HTTP tills certifikat/ESP-IDF-problem löses.
+Firmware integrerar alla kärnkomponenter i `main.c`. HTTP-webbserver startas vid boot. WiFi-uppgifter sparas krypterat med legacy-backup i NVS och överlever `app-flash`. AP+STA-fallback visar väntesida istället för onboarding när uppgifter finns sparade.
 
 ## Komponentmatris
 
@@ -17,18 +17,18 @@ Firmware **1.3.0** integrerar alla kärnkomponenter i `main.c`. HTTP-webbserver 
 | fan_control (LEDC PWM) | ✅ | ✅ | ✅ |
 | anti_condensation | ✅ | ✅ | ✅ |
 | wifi_manager | ✅ | ✅ | — |
-| wifi_secure_storage | ✅ | ✅ | — |
-| web_server (HTTP) | ✅ | ✅ | ⏳ |
+| wifi_secure_storage + legacy backup | ✅ | ✅ | ✅ |
+| web_server (HTTP + SPA + logg) | ✅ | ✅ | ⏳ |
 | mqtt_client / mqtt_ftx | ✅ | ✅* | ⏳ |
 | heat_recovery | ✅ | ✅ | ✅ |
 | ota_manager | ✅ | ✅ | — |
 | security_utils + Ed25519 | ✅ | ✅ | — |
-| audit_log | ✅ | ✅ | — |
+| audit_log (+ web `/api/logs`) | ✅ | ✅ | — |
 | rate_limiter | ✅ | ✅ | — |
 | display_driver (SSD1306) | ✅ | ✅** | — |
-| sht3x_sensor | ✅ | ❌ legacy | — |
+| CalVer `generate_version.py` | ✅ | ✅ | — |
 
-\* MQTT kräver `MQTT_BROKER_DEFAULT` satt i `thermoflow_config.h`  
+\* MQTT kräver `MQTT_BROKER_DEFAULT` i `thermoflow_config.h`  
 \** Endast om OLED detekteras vid boot
 
 ## Startsekvens i `main.c`
@@ -38,6 +38,30 @@ NVS → security_manager → audit_log → rate_limiter → hardware_manager
 → sensor_manager → ftx_init → wifi_manager → web_server → mqtt_ftx_init
 → fan_controller → display → anti_condensation → ota → control_task
 ```
+
+## WiFi och NVS (2026-07-14)
+
+| Funktion | Status |
+|----------|--------|
+| Krypterad lagring (AES-256-CBC) | ✅ |
+| Legacy NVS-backup (dual-write) | ✅ |
+| app-flash bevarar WiFi | ✅ (standard i flash-skript) |
+| AP+STA fallback (90 s, 15 retries) | ✅ |
+| Reconnect-sida vid fallback | ✅ |
+| Enhets-ID från fabriks-MAC | ✅ |
+| Redigerbart visningsnamn | ✅ |
+
+## Webbgränssnitt
+
+| Vy | Status |
+|----|--------|
+| Dashboard | ✅ |
+| Sensorer | ✅ |
+| FTX | ✅ |
+| Inställningar (ID, namn, WiFi) | ✅ |
+| Logg (audit events) | ✅ |
+| Onboarding (`wifi_config.html`) | ✅ (endast utan sparad WiFi) |
+| Väntesida (`wifi_reconnect.html`) | ✅ (AP+STA fallback) |
 
 ## Kända begränsningar
 

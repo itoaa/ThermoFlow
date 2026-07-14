@@ -1683,6 +1683,13 @@ static esp_err_t device_info_handler(httpd_req_t *req)
     wifi_manager_get_status(&wifi_status);
     cJSON_AddStringToObject(root, "wifi_state", wifi_state_to_string(wifi_status.state));
     cJSON_AddBoolToObject(root, "wifi_credentials_saved", wifi_manager_has_saved_credentials());
+    cJSON_AddBoolToObject(root, "wifi_ap_fallback", wifi_manager_is_ap_fallback_mode());
+
+    char saved_ssid[33] = {0};
+    if (wifi_manager_get_saved_ssid(saved_ssid, sizeof(saved_ssid)) == ESP_OK) {
+        cJSON_AddStringToObject(root, "wifi_saved_ssid", saved_ssid);
+    }
+
     cJSON_AddStringToObject(root, "ip_address",
         wifi_status.ip_address[0] ? wifi_status.ip_address : "0.0.0.0");
     cJSON_AddStringToObject(root, "ap_name", wifi_status.ap_name);

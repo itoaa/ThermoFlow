@@ -8,5 +8,7 @@ Set-Location "C:\Users\Ola Andersson\termoflow-test\ThermoFlow-repo"
 $port = if ($args.Count -gt 0) { $args[0] } else { "COM4" }
 
 # app-flash updates only the application partition and preserves NVS (WiFi, device name, etc.)
+# If setup AP appears after flash, wait 1-2 min — see docs/WIFI_AND_FLASH.md
+Write-Host "App-flash (NVS preserved). Setup AP after flash may be AP+STA fallback, not lost WiFi."
 idf.py -p $port app-flash
 exit $LASTEXITCODE

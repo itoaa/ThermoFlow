@@ -2,7 +2,7 @@
 
 **Version:** 1.0.0  
 **Date:** 2026-07-12  
-**Firmware:** 1.3.0
+**Firmware:** CalVer `2026.29.BUILD` (see [VERSIONING.md](../VERSIONING.md))
 
 ## System Boundary
 

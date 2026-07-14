@@ -5,7 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **Note:** Firmware version is defined in `include/thermoflow_version.h`.
+> **Note:** Firmware version uses CalVer `YYYY.WW.BUILD` (see [docs/VERSIONING.md](docs/VERSIONING.md)).  
+> Generated in `include/thermoflow_version.h` by `scripts/generate_version.py`.
+
+---
+
+## [Unreleased]
+
+### Added
+- CalVer versioning scheme `YYYY.WW.BUILD` with CI build number and local `+gitsha` suffix
+- `build-local.ps1` / `flash-local.ps1` for Windows development
+- Web UI **Logg** tab with `GET/DELETE /api/logs` (audit log viewer)
+- `wifi_reconnect.html` — wait page during AP+STA fallback (saved credentials)
+- API fields: `wifi_ap_fallback`, `wifi_saved_ssid`, `device_id`, `has_custom_name`
+- `wifi_manager_is_ap_fallback_mode()`, `wifi_manager_get_saved_ssid()`
+- Docs: [WIFI_AND_FLASH.md](docs/WIFI_AND_FLASH.md), [VERSIONING.md](docs/VERSIONING.md)
+
+### Changed
+- **Flash default is app-flash** (`flash.sh`, `flash-local.ps1`) — NVS/WiFi preserved
+- WiFi credentials dual-written to encrypted + legacy NVS; migration keeps legacy backup
+- AP+STA fallback: 15 retries, 90 s timeout; credentials never cleared on timeout
+- Root web page (`/`): onboarding only when no saved credentials; reconnect page in fallback
+- Device ID derived from factory MAC (`esp_read_mac`) before WiFi init — immutable `ThermoFlow-XXXX`
+- Separate editable display name (NVS `device_config`) from device ID
+- `wifi_init_nvs()` no longer erases NVS partition on second init
+
+### Fixed
+- WiFi SSID lost after flash when using `erase-flash` — documented; app-flash is default
+- False onboarding after flash when device was in AP+STA fallback with saved credentials
+- Stale device names mimicking old MAC-based ID format auto-cleared from NVS
+
+### Documentation
+- README, BUILD.md, IMPLEMENTATION_STATUS, TODO, WiFi_Encryption synced to current firmware
+- Documentation maintenance policy added to README
 
 ---
 

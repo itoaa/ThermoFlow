@@ -215,19 +215,35 @@ idf.py -p /dev/ttyUSB0 flash monitor
 
 The implementation maintains backwards compatibility:
 
-1. Legacy plaintext credentials are detected and migrated
-2. Falls back to plaintext if encryption is unavailable
-3. All new credentials are encrypted by default
-4. Migration preserves configuration across reboots
+1. Legacy plaintext credentials are detected and migrated to encrypted storage
+2. **Legacy copy is retained** as NVS backup (dual-write on every save)
+3. Falls back to legacy plaintext load if encrypted read fails
+4. `wifi_ensure_legacy_backup()` restores legacy copy if missing after encrypted load
+5. All new credentials are encrypted by default when secure storage is available
+
+### Legacy namespace
+
+```
+Namespace: wifi_config
+Keys: ssid, password
+```
+
+Written alongside `wifi_sec_cfg` on every `wifi_manager_store_credentials()` call.
 
 ## Migration Path
 
 ### First Boot After Update
 
-1. System detects legacy plaintext credentials
-2. Automatically migrates to encrypted storage
-3. Legacy credentials are securely erased
-4. Device operates with encrypted credentials
+1. System detects legacy plaintext credentials (if no encrypted blob yet)
+2. Automatically migrates to encrypted storage via `wifi_secure_migrate_from_legacy()`
+3. **Legacy credentials are kept** (not erased) for flash-resilience
+4. Device operates with encrypted credentials; legacy serves as backup
+
+### After app-flash
+
+WiFi credentials in NVS survive firmware updates. Use `app-flash` (default in `flash.sh` / `flash-local.ps1`). Full `erase-flash` wipes NVS — onboarding required once.
+
+See [WIFI_AND_FLASH.md](WIFI_AND_FLASH.md) for user-facing guide.
 
 ### Factory Reset
 
@@ -254,6 +270,7 @@ The implementation maintains backwards compatibility:
 |---------|------|---------|
 | 1.0.0 | 2026-04-03 | Initial plaintext storage |
 | 2.0.0 | 2026-04-12 | SEC-021: AES-256 encryption added |
+| 2.1.0 | 2026-07-14 | Dual-write legacy backup; migration keeps legacy copy; app-flash default |
 
 ## Contact
 

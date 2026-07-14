@@ -1,10 +1,13 @@
 # ThermoFlow - ESP-IDF Build Instructions
 
+**Senast uppdaterad:** 2026-07-14  
+**Firmware-version:** CalVer `YYYY.WW.BUILD` — se [docs/VERSIONING.md](docs/VERSIONING.md)
+
 ## Prerequisites
 
-ESP-IDF must be installed at `$HOME/esp-idf`.
+ESP-IDF v5.1.2+ (ESP32-S3 target).
 
-### Installation
+### Installation (Linux/macOS)
 ```bash
 cd ~
 git clone -b v5.1.2 --recursive https://github.com/espressif/esp-idf.git
@@ -12,129 +15,140 @@ cd esp-idf
 ./install.sh esp32s3
 ```
 
+### Windows
+
+ESP-IDF installerat lokalt, t.ex. `C:\Users\<user>\termoflow-test\esp-idf`.
+
 ## Quick Start
+
+### Linux / macOS
 
 ```bash
 cd ThermoFlow
-
-# Build only
 ./build.sh
-
-# Build and flash
-./build.sh && ./flash.sh /dev/ttyUSB0
+./flash.sh /dev/ttyUSB0          # app-flash — NVS bevaras
 ```
 
-## Project Components (12)
+### Windows
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build-local.ps1
+powershell -ExecutionPolicy Bypass -File flash-local.ps1 COM4
+```
+
+`build-local.ps1` genererar version via `scripts/generate_version.py` och bygger med `sdkconfig.ci.defaults`.
+
+## Flash: app-flash vs full erase
+
+| Kommando | NVS (WiFi, namn) | Användning |
+|----------|------------------|------------|
+| `app-flash` (standard) | **Bevaras** | Normal uppdatering |
+| `erase-flash` + `flash` | Raderas | Fabriksåterställning |
+
+```bash
+# Standard — bevarar WiFi
+./flash.sh /dev/ttyUSB0
+
+# Full wipe
+ERASE_FLASH=1 ./flash.sh /dev/ttyUSB0
+```
+
+Se [docs/WIFI_AND_FLASH.md](docs/WIFI_AND_FLASH.md) för onboarding och felsökning.
+
+## Project Components
 
 | Component | Purpose |
 |-----------|---------|
+| `wifi_manager` | WiFi STA/AP, encrypted credentials, AP+STA fallback |
+| `web_server` | HTTP API + SPA (dashboard, logg, inställningar) |
 | `sht4x_sensor` | Temperature/humidity sensing |
 | `fan_control` | PWM fan control with fail-safe |
-| `mqtt_client` | MQTT over TLS |
-| `web_server` | HTTPS web interface + modern SPA |
-| `security_utils` | Ed25519 signing and auth |
-| `display_driver` | OLED display support |
-| `anti_condensation` | Condensation protection |
 | `sensor_manager` | Multi-sensor orchestration |
-| `rate_limiter` | Token bucket rate limiting |
-| `audit_log` | Security audit logging |
+| `hardware_manager` | Detection + simulation mode |
 | `heat_recovery` | Mini-FTX calculations |
-| `wifi_manager` | AP mode + WiFi configuration |
+| `mqtt_client` | MQTT over TLS |
+| `ota_manager` | Signed OTA updates |
+| `security_utils` | Certificates, Ed25519 |
+| `audit_log` | In-memory event log |
+| `rate_limiter` | Token bucket rate limiting |
+| `anti_condensation` | Condensation protection |
+| `display_driver` | OLED display support |
 
 ## Manual Build
-
-If scripts don't work, use ESP-IDF directly:
 
 ```bash
 export IDF_PATH="$HOME/esp-idf"
 . $IDF_PATH/export.sh
 
 cd ThermoFlow
-
-# First time only - set target
-idf.py set-target esp32s3
-
-# Build
+idf.py set-target esp32s3   # first time only
 idf.py build
-
-# Flash
-idf.py -p /dev/ttyUSB0 flash
-
-# Monitor
+idf.py -p /dev/ttyUSB0 app-flash
 idf.py -p /dev/ttyUSB0 monitor
-
-# Or all at once
-idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
 ## WiFi Configuration
 
-### First Boot (AP Mode)
-1. Enheten startar som `ThermoFlow-XXXX` (där XXXX är sista 4 hex av MAC)
-2. Anslut till AP:n från din telefon/dator
-3. Öppna http://192.168.4.1 i webbläsare
-4. Ange ditt WiFi-nätverk och lösenord
-5. Enheten startar om och ansluter till nätverket
+### First boot (no saved credentials)
 
-### API Endpoints
+1. Enheten startar som `ThermoFlow-XXXX` (sista 4 hex av MAC)
+2. Anslut till AP från telefon/dator
+3. Öppna http://192.168.4.1
+4. Ange WiFi SSID och lösenord
+5. Enheten startar om och ansluter
+
+### Efter firmware-uppdatering (app-flash)
+
+WiFi-uppgifter ska finnas kvar. Om setup-AP syns kort:
+- Vänta 1–2 minuter
+- Öppna http://192.168.4.1 — ska visa **"Ansluter till WiFi"**, inte onboarding
+
+### API
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/device/info` | GET | MAC, namn, version, IP |
-| `/api/wifi/config` | POST | Spara WiFi-konfiguration |
+| `/api/device/info` | GET | Enhets-ID, WiFi-status, version |
+| `/api/wifi/config` | POST | Spara WiFi |
+| `/api/wifi/config` | DELETE | Återställ WiFi |
+| `/api/logs` | GET/DELETE | Auditlogg |
 
-### JSON Format (POST /api/wifi/config)
 ```json
-{
-  "ssid": "DittWiFiNamn",
-  "password": "DittWiFiLosenord"
-}
+POST /api/wifi/config
+{ "ssid": "DittWiFi", "password": "lösenord" }
 ```
 
-## Web Interface Features
+## Web Interface
 
-- **Dashboard**: Realtidsöverblick med gauges och charts
-- **Sensors**: Detaljerade sensorläsningar
-- **FTX**: Värmeväxlare visualisering och kontroll
-- **Settings**: Enhetsinfo och inställningar
-- **PWA**: Kan installeras som app på telefon
+- **Dashboard** — gauges, charts, realtidsdata
+- **Sensorer** — detaljerade läsningar
+- **FTX** — värmeväxlare
+- **Inställningar** — enhets-ID, visningsnamn, WiFi, version
+- **Logg** — boot, WiFi, config, OTA-händelser
+- **PWA** — kan installeras på telefon
 
 ### Keyboard Shortcuts
+
 | Shortcut | Action |
 |----------|--------|
-| Ctrl+1 | Dashboard |
-| Ctrl+2 | Sensors |
-| Ctrl+3 | FTX |
-| Ctrl+4 | Settings |
+| Ctrl+1–4 | Navigera mellan vyer |
 | Ctrl+R | Uppdatera data |
 
-## Configuration
-
-Default configuration in `sdkconfig.defaults`. To customize:
+## Version Generation
 
 ```bash
-idf.py menuconfig
+python3 scripts/generate_version.py
 ```
 
-Common settings:
-- **WiFi**: Component config → WiFi
-- **MQTT**: Component config → MQTT
-- **Partition table**: Partition Table
+Miljövariabler: `USE_BUILD_VERSION`, `BUILD_NUMBER`, `CHANNEL`, `REVISION`, `GIT_SHA`.  
+CI sätter `BUILD_NUMBER` från `GITHUB_RUN_NUMBER`.
 
 ## Build Outputs
 
-After successful build:
-- `build/ThermoFlow.bin` - Main application binary
-- `build/bootloader/bootloader.bin` - Bootloader
-- `build/partition_table/partition-table.bin` - Partition table
-
-Pre-compiled binaries available in `binaries/` folder.
+- `build/ThermoFlow.bin` — application
+- `build/bootloader/bootloader.bin`
+- `build/partition_table/partition-table.bin`
 
 ## Troubleshooting
-
-### Missing sdkconfig
-```bash
-cp sdkconfig.defaults sdkconfig
-```
 
 ### Clean build
 ```bash
@@ -142,22 +156,20 @@ idf.py fullclean
 ./build.sh
 ```
 
-### Component not found
-Check that all components have `CMakeLists.txt` with `idf_component_register()`.
-
-### Permission denied on /dev/ttyUSB0
+### Permission denied on serial port (Linux)
 ```bash
 sudo usermod -a -G dialout $USER
-# Log out and back in for changes to take effect
 ```
 
-### WiFi Manager Issues
-If device doesn't connect:
-1. Hold reset button for 5 seconds to enter AP mode
-2. Or use `/api/wifi/config` with DELETE method to reset
+### WiFi lost after flash
+- Kontrollera att du använder **app-flash**, inte erase-flash
+- Efter erase-flash: gör onboarding en gång; därefter app-flash bevarar uppgifter
 
-## Version Info
+### Component not found
+Each component needs `CMakeLists.txt` with `idf_component_register()`.
 
-- **Target**: ESP32-S3
-- **ESP-IDF**: v5.1.2
-- **Current Version**: 1.5.0 (WiFi Manager + Modern Web GUI)
+## References
+
+- [BUILD_ESP_IDF.md](BUILD_ESP_IDF.md) — detailed ESP-IDF guide
+- [docs/WIFI_AND_FLASH.md](docs/WIFI_AND_FLASH.md) — WiFi persistence
+- [docs/VERSIONING.md](docs/VERSIONING.md) — CalVer scheme

@@ -206,6 +206,18 @@
                     data.device_name || data.name || deviceId;
                 document.getElementById('device-mac').textContent =
                     data.mac_address || data.mac || '00:00:00:00:00:00';
+
+                if (data.wifi_credentials_saved) {
+                    const statusDiv = document.getElementById('status');
+                    const ssid = data.wifi_saved_ssid || 'ditt nätverk';
+                    statusDiv.className = 'status success';
+                    statusDiv.innerHTML =
+                        'WiFi-uppgifter för <strong>' + ssid +
+                        '</strong> är redan sparade. ' +
+                        (data.wifi_ap_fallback
+                            ? 'Enheten försöker ansluta — <a href="/" style="color:#4ecdc4">vänta här</a> istället för att ange lösenord igen.'
+                            : 'Du behöver normalt inte konfigurera om.');
+                }
             } catch (e) {
                 console.log('Could not load device info');
             }
