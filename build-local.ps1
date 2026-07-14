@@ -16,12 +16,18 @@ try {
     $env:GIT_SHA = "unknown"
 }
 
-$python = Get-Command python3 -ErrorAction SilentlyContinue
-if (-not $python) {
-    $python = Get-Command python -ErrorAction SilentlyContinue
+$pythonExe = Join-Path $env:IDF_PYTHON_ENV_PATH "Scripts\python.exe"
+if (-not (Test-Path $pythonExe)) {
+    $python = Get-Command python3 -ErrorAction SilentlyContinue
+    if (-not $python) {
+        $python = Get-Command python -ErrorAction SilentlyContinue
+    }
+    if ($python) {
+        $pythonExe = $python.Source
+    }
 }
-if ($python) {
-    & $python.Source scripts/generate_version.py
+if (Test-Path $pythonExe) {
+    & $pythonExe scripts/generate_version.py
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } else {
     Write-Host "Python not found; using committed include/thermoflow_version.h"

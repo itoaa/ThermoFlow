@@ -16,11 +16,11 @@ if(Python3_FOUND)
     endif()
 endif()
 
-include(thermoflow_version.cmake OPTIONAL)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/thermoflow_version.cmake OPTIONAL)
 if(NOT THERMOFLOW_PROJECT_VER)
     set(THERMOFLOW_PROJECT_VER "0.0.0-dev")
 endif()
-set(PROJECT_VER ${THERMOFLOW_PROJECT_VER})
+set(PROJECT_VER ${THERMOFLOW_PROJECT_VER} CACHE STRING "ThermoFlow firmware version" FORCE)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 set(EXTRA_COMPONENT_DIRS components)
