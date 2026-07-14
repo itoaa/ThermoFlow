@@ -20,9 +20,11 @@
  * @brief Operating mode affects fan behaviour at high humidity (SR-010)
  */
 typedef enum {
-    TF_MODE_AC_MONITOR = 0,      /**< Alert only — fans unchanged */
-    TF_MODE_HEAT_EXCHANGER,      /**< High RH → fans OFF (condensation protection) */
-    TF_MODE_MINI_FTX,            /**< High RH → max ventilation (moisture removal) */
+    TF_MODE_AC_MONITOR = 0,      /**< Mobile AC — monitor cold/hot air, fans unchanged */
+    TF_MODE_HEAT_EXCHANGER,      /**< DIY heat exchanger — temp-based fan control */
+    TF_MODE_MINI_FTX,            /**< Mini-FTX — ventilation with heat recovery */
+    TF_MODE_SENSOR_ONLY,         /**< Temperature/RH logging only, no fan control */
+    TF_MODE_COUNT
 } thermoflow_mode_t;
 
 #ifndef THERMOFLOW_DEFAULT_MODE

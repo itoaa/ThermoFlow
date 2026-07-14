@@ -18,6 +18,7 @@ idf_component_register(
         log_manager
         wifi_manager
         ota_manager
+        device_profile
     EMBED_FILES
         "web/index.html"
         "web/wifi_config.html"

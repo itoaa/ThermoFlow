@@ -38,6 +38,7 @@
 #include "rate_limiter.h"
 #include "audit_log.h"
 #include "log_manager.h"
+#include "device_profile.h"
 #include "web_static.h"
 #include "wifi_manager.h"
 #include "ota_manager.h"
@@ -100,6 +101,8 @@ static esp_err_t ftx_status_handler(httpd_req_t *req);
 static esp_err_t wifi_config_handler(httpd_req_t *req);
 static esp_err_t wifi_config_delete_handler(httpd_req_t *req);
 static esp_err_t device_info_handler(httpd_req_t *req);
+static esp_err_t device_profile_get_handler(httpd_req_t *req);
+static esp_err_t device_profile_put_handler(httpd_req_t *req);
 static esp_err_t device_name_handler(httpd_req_t *req);
 static esp_err_t device_restart_handler(httpd_req_t *req);
 static esp_err_t ota_status_handler(httpd_req_t *req);
@@ -755,6 +758,22 @@ static void register_all_handlers(httpd_handle_t server)
         .user_ctx = NULL
     };
     httpd_register_uri_handler(server, &device_info_uri);
+
+    httpd_uri_t device_profile_get_uri = {
+        .uri = "/api/device/profile",
+        .method = HTTP_GET,
+        .handler = device_profile_get_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &device_profile_get_uri);
+
+    httpd_uri_t device_profile_put_uri = {
+        .uri = "/api/device/profile",
+        .method = HTTP_PUT,
+        .handler = device_profile_put_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &device_profile_put_uri);
 
     httpd_uri_t device_name_uri = {
         .uri = "/api/device/name",
@@ -1836,6 +1855,89 @@ static esp_err_t logs_clear_handler(httpd_req_t *req)
     return send_json_response(req, response);
 }
 
+static void add_profile_fields(cJSON *root)
+{
+    device_profile_t active = device_profile_get();
+    cJSON_AddStringToObject(root, "application_profile", device_profile_to_id(active));
+    cJSON_AddStringToObject(root, "application_profile_label", device_profile_label(active));
+    cJSON_AddStringToObject(root, "application_profile_description",
+                            device_profile_description(active));
+
+    cJSON *profiles = cJSON_CreateArray();
+    for (int i = 0; i < TF_MODE_COUNT; i++) {
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "id", device_profile_to_id((device_profile_t)i));
+        cJSON_AddStringToObject(item, "label", device_profile_label((device_profile_t)i));
+        cJSON_AddStringToObject(item, "description",
+                                device_profile_description((device_profile_t)i));
+        cJSON_AddBoolToObject(item, "active", i == (int)active);
+        cJSON_AddItemToArray(profiles, item);
+    }
+    cJSON_AddItemToObject(root, "available_profiles", profiles);
+}
+
+static esp_err_t device_profile_get_handler(httpd_req_t *req)
+{
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
+    add_security_headers(req);
+
+    cJSON *root = cJSON_CreateObject();
+    add_profile_fields(root);
+    return send_json_response(req, root);
+}
+
+static esp_err_t device_profile_put_handler(httpd_req_t *req)
+{
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
+    add_security_headers(req);
+
+    char body[256] = {0};
+    int received = httpd_req_recv(req, body, sizeof(body) - 1);
+    if (received <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty body");
+        return ESP_FAIL;
+    }
+
+    cJSON *json = cJSON_Parse(body);
+    if (!json) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    cJSON *profile_item = cJSON_GetObjectItem(json, "profile");
+    if (!profile_item || !cJSON_IsString(profile_item)) {
+        cJSON_Delete(json);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing profile");
+        return ESP_FAIL;
+    }
+
+    device_profile_t profile = device_profile_from_id(profile_item->valuestring);
+    if (!device_profile_is_valid(profile)) {
+        cJSON_Delete(json);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid profile");
+        return ESP_FAIL;
+    }
+    cJSON_Delete(json);
+
+    esp_err_t ret = device_profile_set(profile);
+    if (ret != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to save profile");
+        return ESP_FAIL;
+    }
+
+    audit_log_event(AUDIT_EVENT_CONFIG_CHANGE, AUDIT_SEVERITY_INFO,
+                    "Application profile set to %s", device_profile_to_id(profile));
+
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "success", true);
+    add_profile_fields(response);
+    return send_json_response(req, response);
+}
+
 // GET /api/device/info - Return device info (MAC, name, etc.)
 static esp_err_t device_info_handler(httpd_req_t *req)
 {
@@ -1900,6 +2002,8 @@ static esp_err_t device_info_handler(httpd_req_t *req)
     cJSON_AddBoolToObject(root, "simulation_mode", hardware_is_simulation_mode());
     cJSON_AddStringToObject(root, "mode_description", hardware_is_simulation_mode() ? 
         "Running with simulated sensor data" : "Running with real hardware sensors");
+
+    add_profile_fields(root);
     
     return send_json_response(req, root);
 }

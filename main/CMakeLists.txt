@@ -22,4 +22,5 @@ idf_component_register(
         hardware_manager
         ota_manager
         heat_recovery
+        device_profile
 )

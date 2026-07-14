@@ -30,6 +30,7 @@
 #include "log_manager.h"
 #include "rate_limiter.h"
 #include "display_manager.h"
+#include "device_profile.h"
 
 static const char *TAG = "THERMOFLOW";
 
@@ -46,7 +47,7 @@ static const char *TAG = "THERMOFLOW";
 #define SIM_MAX_TEMP_C                25.0f
 
 static SemaphoreHandle_t g_sensor_mutex = NULL;
-static thermoflow_mode_t g_operating_mode = THERMOFLOW_DEFAULT_MODE;
+
 static heat_recovery_data_t g_ftx_data = {0};
 static bool g_ftx_initialized = false;
 static bool g_mqtt_started = false;
@@ -166,8 +167,9 @@ static void apply_fan_policy(float temp_c, float rh_percent, uint8_t *fan1_speed
 
     bool condensation = anti_condensation_is_active();
 
-    switch (g_operating_mode) {
+    switch (device_profile_get()) {
         case TF_MODE_AC_MONITOR:
+        case TF_MODE_SENSOR_ONLY:
             if (!condensation) {
                 *fan1_speed = 0;
             }
@@ -375,7 +377,7 @@ static void control_task(void *pvParameters)
         if (now - last_log_time >= MAIN_LOOP_INTERVAL_MS) {
             TF_LOG_INFO(TF_LOG_CAT_SENSOR, TAG,
                         "Temp=%.1fC RH=%.1f%% Fan=%u%% Mode=%d Cond=%s FTX=%.1f%%",
-                        temp_c, rh_percent, fan1, (int)g_operating_mode,
+                        temp_c, rh_percent, fan1, (int)device_profile_get(),
                         anti_condensation_is_active() ? "YES" : "no",
                         g_ftx_data.efficiency_percent);
             last_log_time = now;
@@ -435,6 +437,7 @@ void app_main(void)
              THERMOFLOW_VERSION_STRING, THERMOFLOW_VERSION_FULL, THERMOFLOW_CHANNEL);
 
     ESP_ERROR_CHECK(init_nvs());
+    ESP_ERROR_CHECK(device_profile_init());
 
     g_sensor_mutex = xSemaphoreCreateMutex();
     if (!g_sensor_mutex) {

@@ -3,6 +3,10 @@
    Dark/Light Theme with Glassmorphism
    ============================================ */
 
+.profile-hidden {
+    display: none !important;
+}
+
 /* CSS Variables for theming */
 :root {
     /* Dark theme (default) */

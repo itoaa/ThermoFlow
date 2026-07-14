@@ -38,9 +38,9 @@
                 <i class="fas fa-thermometer-half"></i>
                 <span>Sensordata</span>
             </a>
-            <a href="#" class="nav-link" data-view="ftx">
+            <a href="#" class="nav-link" data-view="ftx" id="nav-ftx">
                 <i class="fas fa-recycle"></i>
-                <span>FTX</span>
+                <span id="nav-ftx-label">FTX</span>
             </a>
             <a href="#" class="nav-link" data-view="logs">
                 <i class="fas fa-list-alt"></i>
@@ -68,7 +68,7 @@
             <header class="page-header">
                 <div>
                     <h1>Dashboard</h1>
-                    <p class="subtitle">Realtidsöverblick av ditt system</p>
+                    <p class="subtitle" id="dashboard-subtitle">Realtidsöverblick av ditt system</p>
                 </div>
                 <div class="connection-status" id="connection-status">
                     <span class="status-dot"></span>
@@ -104,7 +104,7 @@
                         <i class="fas fa-minus"></i>
                     </div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card profile-ftx-only">
                     <div class="stat-icon efficiency">
                         <i class="fas fa-bolt"></i>
                     </div>
@@ -117,7 +117,7 @@
                         <i class="fas fa-leaf"></i>
                     </div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card profile-ftx-only">
                     <div class="stat-icon power">
                         <i class="fas fa-plug"></i>
                     </div>
@@ -132,14 +132,14 @@
             <!-- Gauges Section -->
             <div class="gauges-grid">
                 <div class="glass-card">
-                    <h3><i class="fas fa-temperature-low"></i> Utomhustemperatur</h3>
+                    <h3 id="gauge-outdoor-label"><i class="fas fa-temperature-low"></i> Utomhustemperatur</h3>
                     <div class="gauge-container">
                         <canvas id="outdoor-temp-gauge"></canvas>
                         <div class="gauge-value" id="outdoor-temp-value">--°C</div>
                     </div>
                 </div>
                 <div class="glass-card">
-                    <h3><i class="fas fa-temperature-high"></i> Inomhustemperatur</h3>
+                    <h3 id="gauge-indoor-label"><i class="fas fa-temperature-high"></i> Inomhustemperatur</h3>
                     <div class="gauge-container">
                         <canvas id="indoor-temp-gauge"></canvas>
                         <div class="gauge-value" id="indoor-temp-value">--°C</div>
@@ -174,7 +174,7 @@
         <div id="view-sensors" class="view">
             <header class="page-header">
                 <h1>Sensordata</h1>
-                <p class="subtitle">Detaljerade mätningar från alla sensorer</p>
+                <p class="subtitle" id="sensors-subtitle">Detaljerade mätningar från alla sensorer</p>
             </header>
             <div class="sensors-detail-grid" id="sensors-detail-grid">
                 <!-- Populated by JS -->
@@ -184,11 +184,11 @@
         <!-- FTX View -->
         <div id="view-ftx" class="view">
             <header class="page-header">
-                <h1>FTX-system</h1>
-                <p class="subtitle">Frånluftsventilation med värmeåtervinning</p>
+                <h1 id="ftx-title">FTX-system</h1>
+                <p class="subtitle" id="ftx-subtitle">Frånluftsventilation med värmeåtervinning</p>
             </header>
             
-            <div class="ftx-diagram">
+            <div class="ftx-diagram profile-ftx-only">
                 <div class="ftx-flow">
                     <div class="flow-section outdoor">
                         <div class="flow-label">Utomhusluft</div>
@@ -250,7 +250,7 @@
                     </div>
                 </div>
                 
-                <div class="glass-card">
+                <div class="glass-card profile-ftx-only">
                     <h3>Status</h3>
                     <div class="status-list">
                         <div class="status-item" id="status-frost">
@@ -361,6 +361,23 @@
             </header>
             
             <div class="settings-grid">
+                <div class="glass-card profile-card">
+                    <h3><i class="fas fa-layer-group"></i> Applikation</h3>
+                    <p class="ota-hint" id="profile-description">
+                        Välj vilket användningsområde enheten ska anpassas för. Menyn och relevanta inställningar uppdateras automatiskt.
+                    </p>
+                    <div class="setting-item">
+                        <label for="application-profile">Användningsområde</label>
+                        <select id="application-profile" class="input-sm">
+                            <option value="ac_monitor">Mobil AC</option>
+                            <option value="heat_exchanger">Värmeväxlare</option>
+                            <option value="mini_ftx">Mini-FTX</option>
+                            <option value="sensor_only">Endast sensorer</option>
+                        </select>
+                    </div>
+                    <p class="ota-hint" id="profile-active-label">Aktiv profil: --</p>
+                </div>
+
                 <div class="glass-card">
                     <h3>Enhetsinformation</h3>
                     <div class="info-list">

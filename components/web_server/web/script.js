@@ -22,8 +22,173 @@ const state = {
     },
     sensors: [],
     fans: [],
-    ftx: null
+    ftx: null,
+    applicationProfile: localStorage.getItem('applicationProfile') || 'heat_exchanger'
 };
+
+const APPLICATION_PROFILES = {
+    ac_monitor: {
+        label: 'Mobil AC',
+        description: 'Övervaka kall och varm luft från portabel AC.',
+        views: ['dashboard', 'sensors', 'logs', 'settings'],
+        ftxNavLabel: null,
+        dashboardSubtitle: 'Övervakning av portabel AC',
+        sensorsSubtitle: 'Kall- och varmluftsmätningar',
+        gaugeOutdoor: 'Kalluft (utblås)',
+        gaugeIndoor: 'Varm avluft',
+        ftxTitle: null,
+        ftxSubtitle: null,
+        sensors: [
+            { name: 'Kalluft (utblås)', icon: 'snowflake', tempKey: 'supply_temp', rhKey: 'supply_rh' },
+            { name: 'Varm avluft', icon: 'fire', tempKey: 'exhaust_temp', rhKey: 'exhaust_rh' },
+            { name: 'Omgivning', icon: 'cloud-sun', tempKey: 'outdoor_temp', rhKey: 'outdoor_rh' }
+        ],
+        gaugePrimary: { tempKey: 'supply_temp', rhKey: 'supply_rh' },
+        gaugeSecondary: { tempKey: 'exhaust_temp', rhKey: 'exhaust_rh' },
+        showFtxStats: false
+    },
+    heat_exchanger: {
+        label: 'Värmeväxlare',
+        description: 'DIY-värmeväxlare med 1–2 fläktar och kondenseringsskydd.',
+        views: ['dashboard', 'sensors', 'ftx', 'logs', 'settings'],
+        ftxNavLabel: 'Fläktar',
+        dashboardSubtitle: 'Överblick av värmeväxlaren',
+        sensorsSubtitle: 'Intags- och utblåsluft',
+        gaugeOutdoor: 'Intagsluft',
+        gaugeIndoor: 'Utblåsluft',
+        ftxTitle: 'Fläktstyrning',
+        ftxSubtitle: 'Manuell eller automatisk fläktreglering',
+        sensors: [
+            { name: 'Intagsluft', icon: 'sign-in-alt', tempKey: 'supply_temp', rhKey: 'supply_rh' },
+            { name: 'Utblåsluft', icon: 'sign-out-alt', tempKey: 'exhaust_temp', rhKey: 'exhaust_rh' },
+            { name: 'Omgivning', icon: 'cloud-sun', tempKey: 'outdoor_temp', rhKey: 'outdoor_rh' }
+        ],
+        gaugePrimary: { tempKey: 'supply_temp', rhKey: 'supply_rh' },
+        gaugeSecondary: { tempKey: 'exhaust_temp', rhKey: 'exhaust_rh' },
+        showFtxStats: false
+    },
+    mini_ftx: {
+        label: 'Mini-FTX',
+        description: 'Frånluftsventilation med värmeåtervinning och FTX-diagnostik.',
+        views: ['dashboard', 'sensors', 'ftx', 'logs', 'settings'],
+        ftxNavLabel: 'FTX',
+        dashboardSubtitle: 'Realtidsöverblick av FTX-systemet',
+        sensorsSubtitle: 'Detaljerade mätningar från alla luftflöden',
+        gaugeOutdoor: 'Utomhustemperatur',
+        gaugeIndoor: 'Tilluftstemperatur',
+        ftxTitle: 'FTX-system',
+        ftxSubtitle: 'Frånluftsventilation med värmeåtervinning',
+        sensors: [
+            { name: 'Utomhus', icon: 'cloud-sun', tempKey: 'outdoor_temp', rhKey: 'outdoor_rh' },
+            { name: 'Tilluft', icon: 'wind', tempKey: 'supply_temp', rhKey: 'supply_rh' },
+            { name: 'Frånluft', icon: 'home', tempKey: 'extract_temp', rhKey: 'extract_rh' },
+            { name: 'Avluft', icon: 'sign-out-alt', tempKey: 'exhaust_temp', rhKey: 'exhaust_rh' }
+        ],
+        gaugePrimary: { tempKey: 'outdoor_temp', rhKey: 'outdoor_rh' },
+        gaugeSecondary: { tempKey: 'supply_temp', rhKey: 'supply_rh' },
+        showFtxStats: true
+    },
+    sensor_only: {
+        label: 'Endast sensorer',
+        description: 'Temperatur och luftfuktighet utan fläktstyrning.',
+        views: ['dashboard', 'sensors', 'logs', 'settings'],
+        ftxNavLabel: null,
+        dashboardSubtitle: 'Sensorövervakning',
+        sensorsSubtitle: 'Alla anslutna sensorer',
+        gaugeOutdoor: 'Sensor 1',
+        gaugeIndoor: 'Sensor 2',
+        ftxTitle: null,
+        ftxSubtitle: null,
+        sensors: [
+            { name: 'Sensor 1', icon: 'thermometer-half', tempKey: 'outdoor_temp', rhKey: 'outdoor_rh' },
+            { name: 'Sensor 2', icon: 'thermometer-half', tempKey: 'supply_temp', rhKey: 'supply_rh' },
+            { name: 'Sensor 3', icon: 'thermometer-half', tempKey: 'extract_temp', rhKey: 'extract_rh' },
+            { name: 'Sensor 4', icon: 'thermometer-half', tempKey: 'exhaust_temp', rhKey: 'exhaust_rh' }
+        ],
+        gaugePrimary: { tempKey: 'outdoor_temp', rhKey: 'outdoor_rh' },
+        gaugeSecondary: { tempKey: 'supply_temp', rhKey: 'supply_rh' },
+        showFtxStats: false
+    }
+};
+
+function getProfileConfig(profileId = state.applicationProfile) {
+    return APPLICATION_PROFILES[profileId] || APPLICATION_PROFILES.heat_exchanger;
+}
+
+function profileAllowsView(viewName, profileId = state.applicationProfile) {
+    return getProfileConfig(profileId).views.includes(viewName);
+}
+
+function applyApplicationProfile(profileId, options = {}) {
+    const { switchIfNeeded = true } = options;
+    const config = getProfileConfig(profileId);
+
+    state.applicationProfile = profileId;
+    localStorage.setItem('applicationProfile', profileId);
+    document.documentElement.dataset.profile = profileId;
+
+    document.querySelectorAll('.nav-link[data-view]').forEach(link => {
+        const view = link.dataset.view;
+        const allowed = config.views.includes(view);
+        link.classList.toggle('profile-hidden', !allowed);
+    });
+
+    const ftxNavLabel = document.getElementById('nav-ftx-label');
+    if (ftxNavLabel) {
+        ftxNavLabel.textContent = config.ftxNavLabel || 'FTX';
+    }
+
+    const navFtx = document.getElementById('nav-ftx');
+    if (navFtx) {
+        navFtx.querySelector('i').className = profileId === 'heat_exchanger'
+            ? 'fas fa-fan'
+            : 'fas fa-recycle';
+    }
+
+    document.getElementById('dashboard-subtitle')?.replaceChildren(
+        document.createTextNode(config.dashboardSubtitle)
+    );
+    document.getElementById('sensors-subtitle')?.replaceChildren(
+        document.createTextNode(config.sensorsSubtitle)
+    );
+
+    const outdoorGauge = document.getElementById('gauge-outdoor-label');
+    if (outdoorGauge) {
+        outdoorGauge.innerHTML = `<i class="fas fa-temperature-low"></i> ${config.gaugeOutdoor}`;
+    }
+    const indoorGauge = document.getElementById('gauge-indoor-label');
+    if (indoorGauge) {
+        indoorGauge.innerHTML = `<i class="fas fa-temperature-high"></i> ${config.gaugeIndoor}`;
+    }
+
+    document.getElementById('ftx-title')?.replaceChildren(
+        document.createTextNode(config.ftxTitle || 'FTX-system')
+    );
+    document.getElementById('ftx-subtitle')?.replaceChildren(
+        document.createTextNode(config.ftxSubtitle || '')
+    );
+
+    document.querySelectorAll('.profile-ftx-only').forEach(el => {
+        el.classList.toggle('profile-hidden', !config.showFtxStats);
+    });
+
+    const profileSelect = document.getElementById('application-profile');
+    if (profileSelect && profileSelect.value !== profileId) {
+        profileSelect.value = profileId;
+    }
+    document.getElementById('profile-description')?.replaceChildren(
+        document.createTextNode(config.description)
+    );
+    document.getElementById('profile-active-label')?.replaceChildren(
+        document.createTextNode(`Aktiv profil: ${config.label}`)
+    );
+
+    if (switchIfNeeded && !profileAllowsView(state.currentView, profileId)) {
+        switchView('dashboard', { skipProfileCheck: true });
+    } else if (state.currentView === 'sensors') {
+        fetchSensorsDetail();
+    }
+}
 
 // Chart instances
 let tempChart = null;
@@ -126,7 +291,11 @@ function setupNavigation() {
     });
 }
 
-function switchView(viewName) {
+function switchView(viewName, options = {}) {
+    if (!options.skipProfileCheck && !profileAllowsView(viewName)) {
+        viewName = 'dashboard';
+    }
+
     // Update nav
     document.querySelectorAll('.nav-link').forEach(link => {
         link.classList.toggle('active', link.dataset.view === viewName);
@@ -142,7 +311,7 @@ function switchView(viewName) {
     // Fetch data for new view
     if (viewName === 'sensors') {
         fetchSensorsDetail();
-    } else if (viewName === 'ftx') {
+    } else if (viewName === 'ftx' && profileAllowsView('ftx')) {
         fetchFTX();
     } else if (viewName === 'settings') {
         fetchDeviceInfo();
@@ -225,6 +394,21 @@ function generateDemoFtxPayload() {
 }
 
 function mockDemoApi(endpoint, options = {}) {
+    if (options.method === 'PUT' && endpoint === '/device/profile' && options.body) {
+        try {
+            const body = JSON.parse(options.body);
+            if (body.profile) {
+                state.applicationProfile = body.profile;
+                localStorage.setItem('applicationProfile', body.profile);
+            }
+        } catch (_) { /* ignore */ }
+        return {
+            success: true,
+            application_profile: state.applicationProfile,
+            application_profile_label: getProfileConfig().label
+        };
+    }
+
     if (options.method === 'POST') {
         return { success: true };
     }
@@ -271,7 +455,24 @@ function mockDemoApi(endpoint, options = {}) {
                 channel: 'demo',
                 ip_address: '127.0.0.1',
                 wifi_state: 'connected',
-                simulation_mode: true
+                simulation_mode: true,
+                application_profile: state.applicationProfile,
+                application_profile_label: getProfileConfig().label,
+                application_profile_description: getProfileConfig().description
+            };
+        case '/device/profile':
+            if (options.method === 'PUT') {
+                return { success: true, application_profile: state.applicationProfile };
+            }
+            return {
+                application_profile: state.applicationProfile,
+                application_profile_label: getProfileConfig().label,
+                available_profiles: Object.entries(APPLICATION_PROFILES).map(([id, cfg]) => ({
+                    id,
+                    label: cfg.label,
+                    description: cfg.description,
+                    active: id === state.applicationProfile
+                }))
             };
         case '/hardware/mode':
             return {
@@ -387,15 +588,19 @@ async function fetchDashboard() {
     
     state.ftx = data;
     
-    // Update stats
+    const profile = getProfileConfig();
     if (data.sensors) {
-        updateGauge('outdoor-temp', data.sensors.outdoor_temp, '°C');
-        updateGauge('indoor-temp', data.sensors.supply_temp, '°C');
-        updateGauge('humidity', data.sensors.supply_rh, '%');
-        
-        document.getElementById('avg-temp').textContent = 
-            ((data.sensors.outdoor_temp + data.sensors.supply_temp) / 2).toFixed(1);
-        document.getElementById('avg-humidity').textContent = data.sensors.supply_rh.toFixed(1);
+        const primaryTemp = data.sensors[profile.gaugePrimary.tempKey];
+        const secondaryTemp = data.sensors[profile.gaugeSecondary.tempKey];
+        const primaryRh = data.sensors[profile.gaugePrimary.rhKey];
+
+        updateGauge('outdoor-temp', primaryTemp, '°C');
+        updateGauge('indoor-temp', secondaryTemp, '°C');
+        updateGauge('humidity', primaryRh, '%');
+
+        document.getElementById('avg-temp').textContent =
+            ((primaryTemp + secondaryTemp) / 2).toFixed(1);
+        document.getElementById('avg-humidity').textContent = primaryRh.toFixed(1);
     }
     
     if (data.efficiency) {
@@ -459,13 +664,14 @@ async function fetchSensorsDetail() {
     
     const container = document.getElementById('sensors-detail-grid');
     container.innerHTML = '';
-    
-    const sensors = [
-        { name: 'Utomhus', icon: 'cloud-sun', temp: data.outdoor_temp, rh: data.outdoor_rh },
-        { name: 'Tilluft', icon: 'wind', temp: data.supply_temp, rh: data.supply_rh },
-        { name: 'Frånluft', icon: 'home', temp: data.extract_temp, rh: data.extract_rh },
-        { name: 'Avluft', icon: 'sign-out-alt', temp: data.exhaust_temp, rh: data.exhaust_rh }
-    ];
+
+    const layout = getProfileConfig().sensors;
+    const sensors = layout.map(sensor => ({
+        name: sensor.name,
+        icon: sensor.icon,
+        temp: data[sensor.tempKey],
+        rh: data[sensor.rhKey]
+    }));
     
     sensors.forEach(sensor => {
         const card = document.createElement('div');
@@ -543,6 +749,33 @@ async function fetchDeviceInfo() {
     if (nameInput && document.activeElement !== nameInput) {
         nameInput.placeholder = data.has_custom_name ? 'Visningsnamn' : 'Samma som enhets-ID';
     }
+
+    if (data.application_profile) {
+        applyApplicationProfile(data.application_profile, { switchIfNeeded: false });
+    }
+}
+
+async function saveApplicationProfile(profileId) {
+    const response = await fetchAPI('/device/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile: profileId })
+    });
+
+    if (response?.success || response?.application_profile) {
+        applyApplicationProfile(response.application_profile || profileId);
+        showToast(`Applikation: ${getProfileConfig().label}`, 'success');
+        return true;
+    }
+
+    if (DEMO_MODE) {
+        applyApplicationProfile(profileId);
+        showToast(`Demo: ${getProfileConfig().label}`, 'success');
+        return true;
+    }
+
+    showToast('Kunde inte spara applikationsprofil', 'error');
+    return false;
 }
 
 const dataSourceLabels = {
@@ -954,6 +1187,20 @@ async function setFanSpeed(fan, speed) {
 
 // Settings
 function setupSettings() {
+    applyApplicationProfile(state.applicationProfile, { switchIfNeeded: false });
+
+    const profileSelect = document.getElementById('application-profile');
+    profileSelect?.addEventListener('change', async (e) => {
+        const previous = state.applicationProfile;
+        const next = e.target.value;
+        if (next === previous) return;
+
+        const saved = await saveApplicationProfile(next);
+        if (!saved) {
+            e.target.value = previous;
+        }
+    });
+
     // Segmented control for theme
     document.querySelectorAll('.segment').forEach(segment => {
         segment.addEventListener('click', () => {
