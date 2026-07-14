@@ -6,6 +6,7 @@ export BUILD_NUMBER="${GITHUB_RUN_NUMBER:-0}"
 export GIT_SHA="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
 export CHANNEL="${THERMOFLOW_CHANNEL:-stable}"
 export REVISION="${THERMOFLOW_REVISION:-1}"
+export USE_BUILD_VERSION="${THERMOFLOW_USE_BUILD_VERSION:-1}"
 
 python3 scripts/generate_version.py
 

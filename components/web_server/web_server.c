@@ -60,6 +60,8 @@ static void add_firmware_version_fields(cJSON *root)
 {
     cJSON_AddStringToObject(root, "firmware_version", THERMOFLOW_VERSION_STRING);
     cJSON_AddStringToObject(root, "version_full", THERMOFLOW_VERSION_FULL);
+    cJSON_AddStringToObject(root, "version_scheme", THERMOFLOW_VERSION_SCHEME);
+    cJSON_AddStringToObject(root, "calver", THERMOFLOW_CALVER_STRING);
     cJSON_AddNumberToObject(root, "version_year", THERMOFLOW_VERSION_YEAR);
     cJSON_AddNumberToObject(root, "version_week", THERMOFLOW_VERSION_WEEK);
     cJSON_AddNumberToObject(root, "version_revision", THERMOFLOW_VERSION_REVISION);

@@ -9,6 +9,7 @@ $env:SDKCONFIG_DEFAULTS = "sdkconfig.ci.defaults"
 $env:CHANNEL = "dev"
 $env:BUILD_NUMBER = "0"
 $env:REVISION = "1"
+$env:USE_BUILD_VERSION = "1"
 
 try {
     $env:GIT_SHA = (git rev-parse --short=7 HEAD 2>$null)
