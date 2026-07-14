@@ -35,6 +35,8 @@
 #include "rate_limiter.h"
 #include "audit_log.h"
 #include "web_static.h"
+#include "wifi_manager.h"
+#include "esp_system.h"
 
 static const char *TAG = "WEB_SERVER";
 
@@ -83,6 +85,14 @@ static esp_err_t add_security_headers(httpd_req_t *req);
 static void register_all_handlers(httpd_handle_t server);
 static esp_err_t load_certificates_from_nvs(void);
 static void free_certificate_cache(void);
+
+static void wifi_config_restart_task(void *arg)
+{
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(800));
+    ESP_LOGI(TAG, "Restarting to apply WiFi credentials");
+    esp_restart();
+}
 
 /* ============================================
  * Configuration Functions
@@ -1039,6 +1049,9 @@ static esp_err_t ftx_control_handler(httpd_req_t *req)
 // POST /api/wifi/config - Configure WiFi credentials
 static esp_err_t wifi_config_handler(httpd_req_t *req)
 {
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
     add_security_headers(req);
     
     char buf[512];
@@ -1082,14 +1095,34 @@ static esp_err_t wifi_config_handler(httpd_req_t *req)
     const char *pass_str = password && cJSON_IsString(password) ? password->valuestring : "";
     
     ESP_LOGI(TAG, "WiFi config: SSID=%s", ssid_str);
+
+    esp_err_t store_ret = wifi_manager_store_credentials(ssid_str, pass_str);
+    if (store_ret != ESP_OK) {
+        cJSON_Delete(json);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to save WiFi credentials");
+        return ESP_FAIL;
+    }
+
+    audit_log_event(AUDIT_EVENT_CONFIG_CHANGE, AUDIT_SEVERITY_INFO,
+                      "WiFi credentials updated for SSID %s", ssid_str);
     
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "success", true);
-    cJSON_AddStringToObject(response, "message", "WiFi configuration received. Device will restart.");
+    cJSON_AddStringToObject(response, "message", "WiFi configuration saved. Device will restart.");
     cJSON_AddStringToObject(response, "ssid", ssid_str);
     
     cJSON_Delete(json);
-    return send_json_response(req, response);
+    esp_err_t err = send_json_response(req, response);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    if (xTaskCreate(wifi_config_restart_task, "wifi_cfg_rst", 3072, NULL, 5, NULL) != pdPASS) {
+        ESP_LOGW(TAG, "Restart task create failed, rebooting now");
+        esp_restart();
+    }
+
+    return ESP_OK;
 }
 
 // GET /api/device/info - Return device info (MAC, name, etc.)

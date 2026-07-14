@@ -404,24 +404,36 @@ esp_err_t wifi_manager_get_status(wifi_manager_status_t *status) {
     return ESP_OK;
 }
 
-esp_err_t wifi_manager_configure(const char *ssid, const char *password) {
-    if (!ssid || !password) return ESP_ERR_INVALID_ARG;
-    
-    ESP_LOGI(TAG, "Configuring WiFi: SSID=%s (SEC-021: encrypted storage)", ssid);
-    
+esp_err_t wifi_manager_store_credentials(const char *ssid, const char *password)
+{
+    if (!ssid || !password) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (ssid[0] == '\0') {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    ESP_LOGI(TAG, "Storing WiFi credentials: SSID=%s", ssid);
+
     strncpy(s_wifi_config.ssid, ssid, sizeof(s_wifi_config.ssid) - 1);
+    s_wifi_config.ssid[sizeof(s_wifi_config.ssid) - 1] = '\0';
     strncpy(s_wifi_config.password, password, sizeof(s_wifi_config.password) - 1);
+    s_wifi_config.password[sizeof(s_wifi_config.password) - 1] = '\0';
     s_wifi_config.configured = true;
-    
-    esp_err_t ret = wifi_save_config();
+
+    return wifi_save_config();
+}
+
+esp_err_t wifi_manager_configure(const char *ssid, const char *password) {
+    esp_err_t ret = wifi_manager_store_credentials(ssid, password);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to save config: %s", esp_err_to_name(ret));
         return ret;
     }
-    
-    ESP_LOGI(TAG, "WiFi config saved with encryption, restarting...");
+
+    ESP_LOGI(TAG, "WiFi config saved, restarting...");
     esp_restart();
-    
+
     return ESP_OK;
 }
 

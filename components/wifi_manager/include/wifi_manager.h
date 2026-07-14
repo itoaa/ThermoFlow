@@ -125,16 +125,24 @@ void wifi_manager_run(void);
 esp_err_t wifi_manager_get_status(wifi_manager_status_t *status);
 
 /**
+ * @brief Store WiFi credentials in NVS (encrypted when available)
+ *
+ * @param ssid WiFi SSID
+ * @param password WiFi password (may be empty string for open networks)
+ * @return ESP_OK if credentials saved successfully
+ */
+esp_err_t wifi_manager_store_credentials(const char *ssid, const char *password);
+
+/**
  * @brief Configure WiFi credentials
  * 
- * Saves credentials to encrypted NVS and attempts connection.
- * Will reboot device on success.
+ * Saves credentials to encrypted NVS and reboots for STA connection.
  * 
  * Security: Credentials are encrypted with AES-256 before storage.
  * 
  * @param ssid WiFi SSID
  * @param password WiFi password
- * @return ESP_OK if credentials saved successfully
+ * @return ESP_OK if credentials saved successfully (does not return after reboot)
  */
 esp_err_t wifi_manager_configure(const char *ssid, const char *password);
 
