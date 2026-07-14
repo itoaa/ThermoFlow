@@ -251,6 +251,7 @@ function mockDemoApi(endpoint, options = {}) {
             };
         case '/device/info':
             return {
+                device_id: 'ThermoFlow-DEMO',
                 device_name: 'ThermoFlow-DEMO',
                 default_name: 'ThermoFlow-DEMO',
                 mac_address: '44:1B:F6:8C:14:40',
@@ -509,7 +510,10 @@ async function fetchDeviceInfo() {
     const data = await fetchAPI('/device/info');
     if (!data) return;
     
-    document.getElementById('device-name').textContent = data.device_name || data.default_name || 'ThermoFlow';
+    const deviceId = data.device_id || data.default_name || '--';
+    const displayName = data.device_name || data.name || deviceId;
+    document.getElementById('device-id').textContent = deviceId;
+    document.getElementById('device-name').textContent = displayName;
     document.getElementById('device-mac').textContent = data.mac_address || '--:--:--:--:--:--';
     document.getElementById('firmware-version').textContent = formatFirmwareVersion(data);
     document.getElementById('device-ip').textContent = data.ip_address || '--';
@@ -518,7 +522,7 @@ async function fetchDeviceInfo() {
 
     const nameInput = document.getElementById('device-name-input');
     if (nameInput && document.activeElement !== nameInput) {
-        nameInput.placeholder = data.default_name || 'ThermoFlow-XXXX';
+        nameInput.placeholder = data.has_custom_name ? 'Visningsnamn' : 'Samma som enhets-ID';
     }
 }
 
@@ -823,8 +827,10 @@ function setupSettings() {
     const cancelBtn = document.getElementById('cancel-device-name');
 
     editBtn?.addEventListener('click', () => {
+        const deviceId = document.getElementById('device-id')?.textContent;
         const currentName = document.getElementById('device-name').textContent;
-        nameInput.value = currentName === '--' ? '' : currentName;
+        const sameAsId = currentName === deviceId || currentName === '--';
+        nameInput.value = sameAsId ? '' : currentName;
         nameForm.classList.remove('hidden');
         nameInput.focus();
     });
@@ -837,7 +843,11 @@ function setupSettings() {
     saveBtn?.addEventListener('click', async () => {
         const newName = nameInput.value.trim();
         if (!newName) {
-            showToast('Ange ett enhetsnamn', 'warning');
+            showToast('Ange ett visningsnamn', 'warning');
+            return;
+        }
+        if (/^ThermoFlow-[0-9A-Fa-f]{4}$/i.test(newName)) {
+            showToast('ThermoFlow-XXXX är reserverat för enhets-ID', 'warning');
             return;
         }
 
@@ -849,7 +859,8 @@ function setupSettings() {
         if (response?.success) {
             document.getElementById('device-name').textContent = response.device_name || newName;
             nameForm.classList.add('hidden');
-            showToast('Enhetsnamn uppdaterat', 'success');
+            fetchDeviceInfo();
+            showToast('Visningsnamn uppdaterat', 'success');
         } else {
             showToast('Kunde inte spara enhetsnamn', 'error');
         }

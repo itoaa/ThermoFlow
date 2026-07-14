@@ -159,7 +159,8 @@
             
             <div class="device-info">
                 <h3>Enhetsinformation</h3>
-                <p><strong>Namn:</strong> <span id="device-name">ThermoFlow</span></p>
+                <p><strong>Enhets-ID:</strong> <span id="device-id">ThermoFlow</span></p>
+                <p><strong>Visningsnamn:</strong> <span id="device-name">ThermoFlow</span></p>
                 <p><strong>MAC:</strong> <span id="device-mac">--:--:--:--:--:--</span></p>
                 <p><strong>Status:</strong> Konfigurationsläge</p>
             </div>
@@ -199,8 +200,10 @@
             try {
                 const response = await fetch('/api/device/info');
                 const data = await response.json();
+                const deviceId = data.device_id || data.default_name || 'ThermoFlow';
+                document.getElementById('device-id').textContent = deviceId;
                 document.getElementById('device-name').textContent =
-                    data.device_name || data.name || data.default_name || 'ThermoFlow';
+                    data.device_name || data.name || deviceId;
                 document.getElementById('device-mac').textContent =
                     data.mac_address || data.mac || '00:00:00:00:00:00';
             } catch (e) {

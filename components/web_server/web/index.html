@@ -281,17 +281,21 @@
                     <h3>Enhetsinformation</h3>
                     <div class="info-list">
                         <div class="info-item">
-                            <span class="info-label">Enhetsnamn</span>
+                            <span class="info-label">Enhets-ID</span>
+                            <span class="info-value" id="device-id">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Visningsnamn</span>
                             <div class="info-value-edit">
                                 <span class="info-value" id="device-name">--</span>
-                                <button class="btn-icon btn-edit" id="edit-device-name" title="Byt namn">
+                                <button class="btn-icon btn-edit" id="edit-device-name" title="Byt visningsnamn">
                                     <i class="fas fa-pen"></i>
                                 </button>
                             </div>
                         </div>
                         <div class="info-item device-name-form hidden" id="device-name-form">
                             <input type="text" id="device-name-input" maxlength="32"
-                                   placeholder="ThermoFlow-XXXX" class="device-name-input">
+                                   placeholder="t.ex. Köket eller Garage" class="device-name-input">
                             <div class="device-name-actions">
                                 <button class="btn-sm btn-primary" id="save-device-name">Spara</button>
                                 <button class="btn-sm" id="cancel-device-name">Avbryt</button>

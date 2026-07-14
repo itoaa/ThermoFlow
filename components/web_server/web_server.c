@@ -21,6 +21,7 @@
 #include "esp_netif.h"
 // #include "esp_https_server.h" // DISABLED for ESP-IDF v5.1.2 compatibility
 #include "esp_wifi.h"
+#include "esp_mac.h"
 #include "esp_tls.h"
 #include "cJSON.h"
 #include <stdio.h>
@@ -1479,12 +1480,14 @@ static esp_err_t device_name_handler(httpd_req_t *req)
     audit_log_event(AUDIT_EVENT_CONFIG_CHANGE, AUDIT_SEVERITY_INFO,
                     "Device name changed to %s", new_name);
 
-    char saved_name[DEVICE_NAME_MAX_LEN + 1];
-    wifi_manager_get_device_name(saved_name, sizeof(saved_name));
+    char display_name[DEVICE_NAME_MAX_LEN + 1];
+    wifi_manager_get_display_name(display_name, sizeof(display_name));
 
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "success", true);
-    cJSON_AddStringToObject(response, "device_name", saved_name);
+    cJSON_AddStringToObject(response, "device_id", wifi_manager_get_ap_name());
+    cJSON_AddStringToObject(response, "device_name", display_name);
+    cJSON_AddBoolToObject(response, "has_custom_name", wifi_manager_has_custom_name());
     return send_json_response(req, response);
 }
 
@@ -1559,16 +1562,21 @@ static esp_err_t device_info_handler(httpd_req_t *req)
     
     cJSON *root = cJSON_CreateObject();
     
-    char device_name[DEVICE_NAME_MAX_LEN + 1];
-    wifi_manager_get_device_name(device_name, sizeof(device_name));
-    cJSON_AddStringToObject(root, "device_name", device_name);
-    cJSON_AddStringToObject(root, "name", device_name);
-    cJSON_AddStringToObject(root, "default_name", wifi_manager_get_ap_name());
+    const char *device_id = wifi_manager_get_ap_name();
+    char display_name[DEVICE_NAME_MAX_LEN + 1];
+    wifi_manager_get_display_name(display_name, sizeof(display_name));
+
+    cJSON_AddStringToObject(root, "device_id", device_id);
+    cJSON_AddStringToObject(root, "default_name", device_id);
+    cJSON_AddStringToObject(root, "device_name", display_name);
+    cJSON_AddStringToObject(root, "name", display_name);
+    cJSON_AddBoolToObject(root, "has_custom_name", wifi_manager_has_custom_name());
     cJSON_AddBoolToObject(root, "name_editable", true);
-    
-    // Get MAC address
+
     uint8_t mac[6];
-    esp_wifi_get_mac(WIFI_IF_STA, mac);
+    if (esp_read_mac(mac, ESP_MAC_WIFI_STA) != ESP_OK) {
+        memset(mac, 0, sizeof(mac));
+    }
     char mac_str[18];
     snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);

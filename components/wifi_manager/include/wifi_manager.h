@@ -176,18 +176,17 @@ bool wifi_manager_is_connected(void);
 bool wifi_manager_is_ap_mode(void);
 
 /**
- * @brief Get the AP name being used
- * 
- * Format: "ThermoFlow-XXXX" where XXXX is last 4 hex digits of MAC
- * 
- * @return AP name string (static buffer)
+ * @brief Get the immutable device ID / AP SSID suffix
+ *
+ * Format: "ThermoFlow-XXXX" where XXXX is last 4 hex digits of MAC.
+ * Derived from factory MAC and never user-editable.
+ *
+ * @return Device ID string (static buffer)
  */
 const char* wifi_manager_get_ap_name(void);
 
 /**
- * @brief Get the device display name (custom or MAC-based default)
- *
- * Default format: "ThermoFlow-XXXX" where XXXX is last 4 hex digits of MAC.
+ * @brief Get the resolved name shown in legacy APIs (display name or device ID)
  *
  * @param name Output buffer
  * @param len Buffer size
@@ -196,11 +195,25 @@ const char* wifi_manager_get_ap_name(void);
 esp_err_t wifi_manager_get_device_name(char *name, size_t len);
 
 /**
- * @brief Set a custom device name (persisted in NVS)
+ * @brief Get the user-facing display name (custom label or device ID)
  *
- * Also updates the network hostname shown on routers/DHCP.
+ * @param name Output buffer
+ * @param len Buffer size
+ * @return ESP_OK on success
+ */
+esp_err_t wifi_manager_get_display_name(char *name, size_t len);
+
+/**
+ * @brief Check whether a custom display name is stored in NVS
+ */
+bool wifi_manager_has_custom_name(void);
+
+/**
+ * @brief Set a custom display name (persisted in NVS)
  *
- * @param name Device name (1-32 chars, alphanumeric and hyphen)
+ * Must not use the ThermoFlow-XXXX device ID format. Updates DHCP hostname.
+ *
+ * @param name Display name (1-32 chars, alphanumeric and hyphen)
  * @return ESP_OK on success
  */
 esp_err_t wifi_manager_set_device_name(const char *name);

@@ -13,6 +13,7 @@
 #include "wifi_manager.h"
 #include "wifi_secure_storage.h"
 #include "esp_wifi.h"
+#include "esp_mac.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_event.h"
@@ -52,6 +53,8 @@ static esp_err_t wifi_save_legacy_config(void);
 static esp_err_t wifi_ensure_legacy_backup(void);
 static esp_err_t wifi_save_config(void);
 static void wifi_generate_ap_name(void);
+static esp_err_t wifi_read_sta_mac(uint8_t mac[6]);
+static void wifi_sanitize_custom_device_name(void);
 static esp_err_t wifi_load_device_name(void);
 static esp_err_t wifi_save_device_name(const char *name);
 static void wifi_apply_hostname(void);
@@ -101,10 +104,11 @@ esp_err_t wifi_manager_init(void) {
         // Continue anyway - might already exist
     }
     
-    // Generate AP name with MAC suffix
+    // Device ID from factory MAC (works before esp_wifi_init)
     wifi_generate_ap_name();
     strncpy(s_status.ap_name, s_ap_name, sizeof(s_status.ap_name) - 1);
     wifi_load_device_name();
+    wifi_sanitize_custom_device_name();
     
     // Load saved configuration
     ret = wifi_load_config();
@@ -167,15 +171,60 @@ static esp_err_t wifi_init_nvs(void) {
     return (ret == ESP_ERR_NVS_NOT_INITIALIZED) ? ret : ESP_OK;
 }
 
+static esp_err_t wifi_read_sta_mac(uint8_t mac[6]) {
+    esp_err_t ret = esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read STA MAC: %s", esp_err_to_name(ret));
+    }
+    return ret;
+}
+
 static void wifi_generate_ap_name(void) {
-    uint8_t mac[6];
-    esp_wifi_get_mac(WIFI_IF_STA, mac);  // Get STA MAC (same as AP MAC)
-    
-    // Format: ThermoFlow-XXXX (last 4 hex digits of MAC)
+    uint8_t mac[6] = {0};
+
+    if (wifi_read_sta_mac(mac) != ESP_OK) {
+        snprintf(s_ap_name, sizeof(s_ap_name), "%s0000", WIFI_AP_SSID_PREFIX);
+        ESP_LOGW(TAG, "Using fallback device ID: %s", s_ap_name);
+        return;
+    }
+
+    /* Format: ThermoFlow-XXXX (last 4 hex digits of MAC) */
     snprintf(s_ap_name, sizeof(s_ap_name), "%s%02X%02X",
              WIFI_AP_SSID_PREFIX, mac[4], mac[5]);
-    
-    ESP_LOGI(TAG, "AP name: %s", s_ap_name);
+
+    ESP_LOGI(TAG, "Device ID: %s (MAC %02X:%02X:%02X:%02X:%02X:%02X)",
+             s_ap_name, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
+static void wifi_sanitize_custom_device_name(void) {
+    if (s_custom_device_name[0] == '\0') {
+        return;
+    }
+
+    if (strcmp(s_custom_device_name, s_ap_name) == 0) {
+        ESP_LOGI(TAG, "Dropping redundant custom name '%s'", s_custom_device_name);
+        goto clear_custom;
+    }
+
+    /* Clear stale ThermoFlow-XXXX names from old MAC read bug */
+    const size_t prefix_len = strlen(WIFI_AP_SSID_PREFIX);
+    if (strncmp(s_custom_device_name, WIFI_AP_SSID_PREFIX, prefix_len) == 0 &&
+        strlen(s_custom_device_name) == prefix_len + 4) {
+        ESP_LOGW(TAG, "Clearing stale MAC-style name '%s' (device ID is %s)",
+                 s_custom_device_name, s_ap_name);
+        goto clear_custom;
+    }
+
+    return;
+
+clear_custom:
+    s_custom_device_name[0] = '\0';
+    nvs_handle_t nvs_handle;
+    if (nvs_open(DEVICE_NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_erase_key(nvs_handle, DEVICE_NVS_KEY_NAME);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
 }
 
 static bool wifi_is_valid_device_name(const char *name) {
@@ -599,6 +648,14 @@ esp_err_t wifi_manager_set_device_name(const char *name) {
         return ESP_ERR_INVALID_ARG;
     }
 
+    /* Display names must not mimic the immutable MAC-based device ID */
+    const size_t prefix_len = strlen(WIFI_AP_SSID_PREFIX);
+    if (strncmp(name, WIFI_AP_SSID_PREFIX, prefix_len) == 0 &&
+        strlen(name) == prefix_len + 4) {
+        ESP_LOGW(TAG, "Rejecting display name '%s' (reserved device ID format)", name);
+        return ESP_ERR_INVALID_ARG;
+    }
+
     strncpy(s_custom_device_name, name, sizeof(s_custom_device_name) - 1);
     s_custom_device_name[sizeof(s_custom_device_name) - 1] = '\0';
 
@@ -608,7 +665,25 @@ esp_err_t wifi_manager_set_device_name(const char *name) {
     }
 
     wifi_apply_hostname();
-    ESP_LOGI(TAG, "Device name updated to %s", name);
+    ESP_LOGI(TAG, "Display name updated to %s (device ID %s)", name, s_ap_name);
+    return ESP_OK;
+}
+
+bool wifi_manager_has_custom_name(void) {
+    return s_custom_device_name[0] != '\0';
+}
+
+esp_err_t wifi_manager_get_display_name(char *name, size_t len) {
+    if (!name || len == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (s_custom_device_name[0] != '\0') {
+        strncpy(name, s_custom_device_name, len - 1);
+    } else {
+        strncpy(name, s_ap_name, len - 1);
+    }
+    name[len - 1] = '\0';
     return ESP_OK;
 }
 
