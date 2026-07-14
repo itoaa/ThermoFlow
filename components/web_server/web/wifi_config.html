@@ -199,8 +199,10 @@
             try {
                 const response = await fetch('/api/device/info');
                 const data = await response.json();
-                document.getElementById('device-name').textContent = data.name || 'ThermoFlow';
-                document.getElementById('device-mac').textContent = data.mac || '00:00:00:00:00:00';
+                document.getElementById('device-name').textContent =
+                    data.device_name || data.name || data.default_name || 'ThermoFlow';
+                document.getElementById('device-mac').textContent =
+                    data.mac_address || data.mac || '00:00:00:00:00:00';
             } catch (e) {
                 console.log('Could not load device info');
             }

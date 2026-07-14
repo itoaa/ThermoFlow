@@ -36,7 +36,10 @@
 #include "audit_log.h"
 #include "web_static.h"
 #include "wifi_manager.h"
+#include "ota_manager.h"
+#include "thermoflow_version.h"
 #include "esp_system.h"
+
 
 static const char *TAG = "WEB_SERVER";
 
@@ -76,7 +79,11 @@ static esp_err_t ftx_efficiency_handler(httpd_req_t *req);
 static esp_err_t ftx_control_handler(httpd_req_t *req);
 static esp_err_t ftx_status_handler(httpd_req_t *req);
 static esp_err_t wifi_config_handler(httpd_req_t *req);
+static esp_err_t wifi_config_delete_handler(httpd_req_t *req);
 static esp_err_t device_info_handler(httpd_req_t *req);
+static esp_err_t device_name_handler(httpd_req_t *req);
+static esp_err_t device_restart_handler(httpd_req_t *req);
+static esp_err_t ota_status_handler(httpd_req_t *req);
 static esp_err_t hardware_info_handler(httpd_req_t *req);
 static esp_err_t cert_status_handler(httpd_req_t *req);
 static esp_err_t redirect_handler(httpd_req_t *req);
@@ -92,6 +99,51 @@ static void wifi_config_restart_task(void *arg)
     vTaskDelay(pdMS_TO_TICKS(800));
     ESP_LOGI(TAG, "Restarting to apply WiFi credentials");
     esp_restart();
+}
+
+static void device_restart_task(void *arg)
+{
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(500));
+    esp_restart();
+}
+
+static const char *wifi_state_to_string(wifi_manager_state_t state)
+{
+    switch (state) {
+        case WIFI_STATE_CONNECTED:
+            return "connected";
+        case WIFI_STATE_AP_MODE:
+            return "ap_mode";
+        case WIFI_STATE_CONNECTING:
+            return "connecting";
+        case WIFI_STATE_DISCONNECTED:
+            return "disconnected";
+        default:
+            return "unknown";
+    }
+}
+
+static const char *ota_state_to_string(ota_state_t state)
+{
+    switch (state) {
+        case OTA_STATE_IDLE: return "idle";
+        case OTA_STATE_CHECKING: return "checking";
+        case OTA_STATE_DOWNLOADING: return "downloading";
+        case OTA_STATE_VERIFYING: return "verifying";
+        case OTA_STATE_READY: return "ready";
+        case OTA_STATE_APPLYING: return "applying";
+        case OTA_STATE_ROLLBACK: return "rollback";
+        case OTA_STATE_ERROR: return "error";
+        default: return "unknown";
+    }
+}
+
+static void wifi_reset_task(void *arg)
+{
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(800));
+    wifi_manager_reset();
 }
 
 /* ============================================
@@ -615,6 +667,14 @@ static void register_all_handlers(httpd_handle_t server)
         .user_ctx = NULL
     };
     httpd_register_uri_handler(server, &wifi_config_uri);
+
+    httpd_uri_t wifi_config_delete_uri = {
+        .uri = "/api/wifi/config",
+        .method = HTTP_DELETE,
+        .handler = wifi_config_delete_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &wifi_config_delete_uri);
     
     httpd_uri_t device_info_uri = {
         .uri = "/api/device/info",
@@ -623,6 +683,30 @@ static void register_all_handlers(httpd_handle_t server)
         .user_ctx = NULL
     };
     httpd_register_uri_handler(server, &device_info_uri);
+
+    httpd_uri_t device_name_uri = {
+        .uri = "/api/device/name",
+        .method = HTTP_POST,
+        .handler = device_name_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &device_name_uri);
+
+    httpd_uri_t device_restart_uri = {
+        .uri = "/api/device/restart",
+        .method = HTTP_POST,
+        .handler = device_restart_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &device_restart_uri);
+
+    httpd_uri_t ota_status_uri = {
+        .uri = "/api/ota/status",
+        .method = HTTP_GET,
+        .handler = ota_status_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &ota_status_uri);
 }
 
 /* ============================================
@@ -1125,6 +1209,158 @@ static esp_err_t wifi_config_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// DELETE /api/wifi/config - Reset saved WiFi credentials
+static esp_err_t wifi_config_delete_handler(httpd_req_t *req)
+{
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
+    add_security_headers(req);
+
+    audit_log_event(AUDIT_EVENT_CONFIG_CHANGE, AUDIT_SEVERITY_INFO,
+                    "WiFi credentials reset via web API");
+
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "success", true);
+    cJSON_AddStringToObject(response, "message", "WiFi configuration reset. Device will restart.");
+
+    esp_err_t err = send_json_response(req, response);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    if (xTaskCreate(wifi_reset_task, "wifi_rst", 3072, NULL, 5, NULL) != pdPASS) {
+        wifi_manager_reset();
+    }
+
+    return ESP_OK;
+}
+
+// POST /api/device/name - Set custom device name
+static esp_err_t device_name_handler(httpd_req_t *req)
+{
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
+    add_security_headers(req);
+
+    char buf[128];
+    int ret, remaining = req->content_len;
+
+    if (remaining > (int)sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    int received = 0;
+    while (remaining > 0) {
+        ret = httpd_req_recv(req, buf + received, remaining);
+        if (ret <= 0) {
+            if (ret == HTTPD_SOCK_ERR_TIMEOUT) continue;
+            return ESP_FAIL;
+        }
+        received += ret;
+        remaining -= ret;
+    }
+    buf[received] = '\0';
+
+    cJSON *json = cJSON_Parse(buf);
+    if (!json) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    cJSON *name_item = cJSON_GetObjectItem(json, "device_name");
+    if (!name_item || !cJSON_IsString(name_item) || name_item->valuestring[0] == '\0') {
+        cJSON_Delete(json);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing or invalid device_name");
+        return ESP_FAIL;
+    }
+
+    char new_name[DEVICE_NAME_MAX_LEN + 1];
+    strncpy(new_name, name_item->valuestring, sizeof(new_name) - 1);
+    new_name[sizeof(new_name) - 1] = '\0';
+    cJSON_Delete(json);
+
+    esp_err_t set_ret = wifi_manager_set_device_name(new_name);
+    if (set_ret != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid device name");
+        return ESP_FAIL;
+    }
+
+    audit_log_event(AUDIT_EVENT_CONFIG_CHANGE, AUDIT_SEVERITY_INFO,
+                    "Device name changed to %s", new_name);
+
+    char saved_name[DEVICE_NAME_MAX_LEN + 1];
+    wifi_manager_get_device_name(saved_name, sizeof(saved_name));
+
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "success", true);
+    cJSON_AddStringToObject(response, "device_name", saved_name);
+    return send_json_response(req, response);
+}
+
+// POST /api/device/restart - Restart the device
+static esp_err_t device_restart_handler(httpd_req_t *req)
+{
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
+    add_security_headers(req);
+
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "success", true);
+    cJSON_AddStringToObject(response, "message", "Device restarting");
+
+    esp_err_t err = send_json_response(req, response);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    if (xTaskCreate(device_restart_task, "dev_restart", 2048, NULL, 5, NULL) != pdPASS) {
+        esp_restart();
+    }
+
+    return ESP_OK;
+}
+
+// GET /api/ota/status - OTA update status
+static esp_err_t ota_status_handler(httpd_req_t *req)
+{
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
+    add_security_headers(req);
+
+    cJSON *root = cJSON_CreateObject();
+    ota_status_t status = {0};
+
+    if (ota_manager_get_status(&status) == ESP_OK) {
+        cJSON_AddStringToObject(root, "state", ota_state_to_string(status.state));
+        cJSON_AddBoolToObject(root, "update_available", status.update_available);
+        cJSON_AddBoolToObject(root, "download_in_progress", status.download_in_progress);
+        cJSON_AddBoolToObject(root, "update_ready", status.update_ready);
+        cJSON_AddBoolToObject(root, "can_rollback", status.can_rollback);
+        cJSON_AddStringToObject(root, "current_version", status.current_version);
+        cJSON_AddStringToObject(root, "pending_version", status.pending_version);
+        cJSON_AddStringToObject(root, "partition", status.partition_label);
+        cJSON_AddNumberToObject(root, "download_progress", status.download_progress);
+    } else {
+        cJSON_AddStringToObject(root, "state", "unavailable");
+    }
+
+    cJSON_AddStringToObject(root, "firmware_version", THERMOFLOW_VERSION_STRING);
+    cJSON_AddBoolToObject(root, "server_configured", OTA_SERVER_URL[0] != '\0');
+    if (OTA_SERVER_URL[0] != '\0') {
+        cJSON_AddStringToObject(root, "update_url", OTA_SERVER_URL);
+    }
+    cJSON_AddStringToObject(root, "update_method",
+        "OTA körs automatiskt när OTA_SERVER_URL är konfigurerad. "
+        "Alternativt: flasha via USB (esptool) eller idf.py flash.");
+
+    return send_json_response(req, root);
+}
+
 // GET /api/device/info - Return device info (MAC, name, etc.)
 static esp_err_t device_info_handler(httpd_req_t *req)
 {
@@ -1135,8 +1371,12 @@ static esp_err_t device_info_handler(httpd_req_t *req)
     
     cJSON *root = cJSON_CreateObject();
     
-    // Device name
-    cJSON_AddStringToObject(root, "device_name", "ThermoFlow");
+    char device_name[DEVICE_NAME_MAX_LEN + 1];
+    wifi_manager_get_device_name(device_name, sizeof(device_name));
+    cJSON_AddStringToObject(root, "device_name", device_name);
+    cJSON_AddStringToObject(root, "name", device_name);
+    cJSON_AddStringToObject(root, "default_name", wifi_manager_get_ap_name());
+    cJSON_AddBoolToObject(root, "name_editable", true);
     
     // Get MAC address
     uint8_t mac[6];
@@ -1145,17 +1385,28 @@ static esp_err_t device_info_handler(httpd_req_t *req)
     snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     cJSON_AddStringToObject(root, "mac_address", mac_str);
+    cJSON_AddStringToObject(root, "mac", mac_str);
+    
+    wifi_manager_status_t wifi_status = {0};
+    wifi_manager_get_status(&wifi_status);
+    cJSON_AddStringToObject(root, "wifi_state", wifi_state_to_string(wifi_status.state));
+    cJSON_AddStringToObject(root, "ip_address",
+        wifi_status.ip_address[0] ? wifi_status.ip_address : "0.0.0.0");
+    cJSON_AddStringToObject(root, "ap_name", wifi_status.ap_name);
+    if (wifi_status.state == WIFI_STATE_CONNECTED) {
+        cJSON_AddNumberToObject(root, "rssi", wifi_status.rssi);
+    }
     
     // Server status
     bool http_running, https_running;
     web_server_get_status(&http_running, &https_running);
     cJSON_AddBoolToObject(root, "http_running", http_running);
     cJSON_AddBoolToObject(root, "https_running", https_running);
-    cJSON_AddStringToObject(root, "ip_address", "0.0.0.0");
     
     // Firmware version and platform
-    cJSON_AddStringToObject(root, "firmware_version", "2.0.0");
+    cJSON_AddStringToObject(root, "firmware_version", THERMOFLOW_VERSION_STRING);
     cJSON_AddStringToObject(root, "platform", "ESP32-S3");
+    cJSON_AddBoolToObject(root, "ota_available", OTA_SERVER_URL[0] != '\0');
     
     // Hardware mode
     cJSON_AddBoolToObject(root, "simulation_mode", hardware_is_simulation_mode());

@@ -191,7 +191,8 @@ async function fetchAll() {
         fetchDashboard(),
         fetchSensors(),
         fetchFTX(),
-        fetchDeviceInfo()
+        fetchDeviceInfo(),
+        fetchOtaStatus()
     ]);
     
     state.connected = true;
@@ -309,17 +310,62 @@ async function fetchSensorsDetail() {
     });
 }
 
+const wifiStateLabels = {
+    connected: 'Ansluten',
+    ap_mode: 'AP-läge',
+    connecting: 'Ansluter...',
+    disconnected: 'Frånkopplad',
+    unknown: 'Okänd'
+};
+
+const otaStateLabels = {
+    idle: 'Väntar',
+    checking: 'Söker uppdatering',
+    downloading: 'Laddar ner',
+    verifying: 'Verifierar',
+    ready: 'Klar att installera',
+    applying: 'Installerar',
+    rollback: 'Återställer',
+    error: 'Fel',
+    unavailable: 'Ej tillgänglig',
+    unknown: 'Okänd'
+};
+
 async function fetchDeviceInfo() {
     const data = await fetchAPI('/device/info');
     if (!data) return;
     
-    document.getElementById('device-name').textContent = data.device_name || 'ThermoFlow';
+    document.getElementById('device-name').textContent = data.device_name || data.default_name || 'ThermoFlow';
     document.getElementById('device-mac').textContent = data.mac_address || '--:--:--:--:--:--';
     document.getElementById('firmware-version').textContent = data.firmware_version || '--';
     document.getElementById('device-ip').textContent = data.ip_address || '--';
-    document.getElementById('wifi-state').textContent = 
-        data.wifi_state === 'connected' ? 'Ansluten' : 
-        data.wifi_state === 'ap_mode' ? 'AP-läge' : 'Frånkopplad';
+    document.getElementById('wifi-state').textContent =
+        wifiStateLabels[data.wifi_state] || wifiStateLabels.unknown;
+
+    const nameInput = document.getElementById('device-name-input');
+    if (nameInput && document.activeElement !== nameInput) {
+        nameInput.placeholder = data.default_name || 'ThermoFlow-XXXX';
+    }
+}
+
+async function fetchOtaStatus() {
+    const data = await fetchAPI('/ota/status');
+    if (!data) return;
+
+    const stateEl = document.getElementById('ota-state');
+    const partitionEl = document.getElementById('ota-partition');
+    const hintEl = document.getElementById('ota-hint');
+
+    if (stateEl) {
+        stateEl.textContent = otaStateLabels[data.state] || data.state || '--';
+    }
+    if (partitionEl) {
+        partitionEl.textContent = data.partition || '--';
+    }
+    if (hintEl) {
+        hintEl.textContent = data.update_method ||
+            'OTA kräver en konfigurerad uppdateringsserver. Flasha via USB tills dess.';
+    }
 }
 
 // UI Updates
@@ -532,6 +578,46 @@ function setupSettings() {
         });
     }
     
+    // Device name editing
+    const nameForm = document.getElementById('device-name-form');
+    const nameInput = document.getElementById('device-name-input');
+    const editBtn = document.getElementById('edit-device-name');
+    const saveBtn = document.getElementById('save-device-name');
+    const cancelBtn = document.getElementById('cancel-device-name');
+
+    editBtn?.addEventListener('click', () => {
+        const currentName = document.getElementById('device-name').textContent;
+        nameInput.value = currentName === '--' ? '' : currentName;
+        nameForm.classList.remove('hidden');
+        nameInput.focus();
+    });
+
+    cancelBtn?.addEventListener('click', () => {
+        nameForm.classList.add('hidden');
+        nameInput.value = '';
+    });
+
+    saveBtn?.addEventListener('click', async () => {
+        const newName = nameInput.value.trim();
+        if (!newName) {
+            showToast('Ange ett enhetsnamn', 'warning');
+            return;
+        }
+
+        const response = await fetchAPI('/device/name', {
+            method: 'POST',
+            body: JSON.stringify({ device_name: newName })
+        });
+
+        if (response?.success) {
+            document.getElementById('device-name').textContent = response.device_name || newName;
+            nameForm.classList.add('hidden');
+            showToast('Enhetsnamn uppdaterat', 'success');
+        } else {
+            showToast('Kunde inte spara enhetsnamn', 'error');
+        }
+    });
+
     // Danger buttons
     document.getElementById('reset-wifi')?.addEventListener('click', async () => {
         if (confirm('Är du säker på att du vill återställa WiFi-konfigurationen?')) {
@@ -545,7 +631,7 @@ function setupSettings() {
     document.getElementById('restart-device')?.addEventListener('click', async () => {
         if (confirm('Är du säker på att du vill starta om enheten?')) {
             showToast('Startar om...', 'info');
-            // Device restart would happen here
+            await fetchAPI('/device/restart', { method: 'POST' });
         }
     });
 }

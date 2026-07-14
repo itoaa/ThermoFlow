@@ -282,7 +282,20 @@
                     <div class="info-list">
                         <div class="info-item">
                             <span class="info-label">Enhetsnamn</span>
-                            <span class="info-value" id="device-name">--</span>
+                            <div class="info-value-edit">
+                                <span class="info-value" id="device-name">--</span>
+                                <button class="btn-icon btn-edit" id="edit-device-name" title="Byt namn">
+                                    <i class="fas fa-pen"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="info-item device-name-form hidden" id="device-name-form">
+                            <input type="text" id="device-name-input" maxlength="32"
+                                   placeholder="ThermoFlow-XXXX" class="device-name-input">
+                            <div class="device-name-actions">
+                                <button class="btn-sm btn-primary" id="save-device-name">Spara</button>
+                                <button class="btn-sm" id="cancel-device-name">Avbryt</button>
+                            </div>
                         </div>
                         <div class="info-item">
                             <span class="info-label">MAC-adress</span>
@@ -326,6 +339,23 @@
                             <span class="slider-value" id="update-interval-value">5s</span>
                         </div>
                     </div>
+                </div>
+
+                <div class="glass-card">
+                    <h3><i class="fas fa-cloud-download-alt"></i> Firmware-uppdatering (OTA)</h3>
+                    <div class="info-list">
+                        <div class="info-item">
+                            <span class="info-label">OTA-status</span>
+                            <span class="info-value" id="ota-state">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Partition</span>
+                            <span class="info-value" id="ota-partition">--</span>
+                        </div>
+                    </div>
+                    <p class="ota-hint" id="ota-hint">
+                        OTA kräver en konfigurerad uppdateringsserver. Flasha via USB tills dess.
+                    </p>
                 </div>
 
                 <div class="glass-card danger-zone">

@@ -50,6 +50,11 @@ extern "C" {
 #define WIFI_NVS_KEY_SSID       "ssid"
 #define WIFI_NVS_KEY_PASSWORD   "password"
 
+/* NVS namespace for device identity */
+#define DEVICE_NVS_NAMESPACE    "device_config"
+#define DEVICE_NVS_KEY_NAME       "name"
+#define DEVICE_NAME_MAX_LEN       32
+
 /* WiFi connection timeout (seconds) */
 #define WIFI_CONNECT_TIMEOUT_S  30
 
@@ -178,6 +183,27 @@ bool wifi_manager_is_ap_mode(void);
  * @return AP name string (static buffer)
  */
 const char* wifi_manager_get_ap_name(void);
+
+/**
+ * @brief Get the device display name (custom or MAC-based default)
+ *
+ * Default format: "ThermoFlow-XXXX" where XXXX is last 4 hex digits of MAC.
+ *
+ * @param name Output buffer
+ * @param len Buffer size
+ * @return ESP_OK on success
+ */
+esp_err_t wifi_manager_get_device_name(char *name, size_t len);
+
+/**
+ * @brief Set a custom device name (persisted in NVS)
+ *
+ * Also updates the network hostname shown on routers/DHCP.
+ *
+ * @param name Device name (1-32 chars, alphanumeric and hyphen)
+ * @return ESP_OK on success
+ */
+esp_err_t wifi_manager_set_device_name(const char *name);
 
 /**
  * @brief Check if credentials are stored with encryption

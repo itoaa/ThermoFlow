@@ -15,6 +15,7 @@ idf_component_register(
         rate_limiter
         audit_log
         wifi_manager
+        ota_manager
     EMBED_FILES
         "web/index.html"
         "web/wifi_config.html"

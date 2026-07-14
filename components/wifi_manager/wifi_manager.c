@@ -39,6 +39,7 @@ static esp_netif_t *s_wifi_netif = NULL;
 
 /* AP name with MAC suffix */
 static char s_ap_name[32] = {0};
+static char s_custom_device_name[DEVICE_NAME_MAX_LEN + 1] = {0};
 
 /* Feature flags */
 static bool s_use_encrypted_storage = true;
@@ -49,6 +50,10 @@ static esp_err_t wifi_init_nvs(void);
 static esp_err_t wifi_load_config(void);
 static esp_err_t wifi_save_config(void);
 static void wifi_generate_ap_name(void);
+static esp_err_t wifi_load_device_name(void);
+static esp_err_t wifi_save_device_name(const char *name);
+static void wifi_apply_hostname(void);
+static bool wifi_is_valid_device_name(const char *name);
 static esp_err_t wifi_start_ap(void);
 static esp_err_t wifi_connect(void);
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
@@ -97,6 +102,7 @@ esp_err_t wifi_manager_init(void) {
     // Generate AP name with MAC suffix
     wifi_generate_ap_name();
     strncpy(s_status.ap_name, s_ap_name, sizeof(s_status.ap_name) - 1);
+    wifi_load_device_name();
     
     // Load saved configuration
     ret = wifi_load_config();
@@ -168,6 +174,69 @@ static void wifi_generate_ap_name(void) {
              WIFI_AP_SSID_PREFIX, mac[4], mac[5]);
     
     ESP_LOGI(TAG, "AP name: %s", s_ap_name);
+}
+
+static bool wifi_is_valid_device_name(const char *name) {
+    if (!name || name[0] == '\0' || strlen(name) > DEVICE_NAME_MAX_LEN) {
+        return false;
+    }
+    for (const char *p = name; *p; p++) {
+        if (!((*p >= 'A' && *p <= 'Z') ||
+              (*p >= 'a' && *p <= 'z') ||
+              (*p >= '0' && *p <= '9') ||
+              *p == '-')) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static esp_err_t wifi_load_device_name(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(DEVICE_NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    size_t name_len = sizeof(s_custom_device_name);
+    ret = nvs_get_str(nvs_handle, DEVICE_NVS_KEY_NAME, s_custom_device_name, &name_len);
+    nvs_close(nvs_handle);
+
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Loaded custom device name: %s", s_custom_device_name);
+    } else {
+        s_custom_device_name[0] = '\0';
+    }
+    return ret;
+}
+
+static esp_err_t wifi_save_device_name(const char *name) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(DEVICE_NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = nvs_set_str(nvs_handle, DEVICE_NVS_KEY_NAME, name);
+    if (ret == ESP_OK) {
+        ret = nvs_commit(nvs_handle);
+    }
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+static void wifi_apply_hostname(void) {
+    if (!s_wifi_netif) {
+        return;
+    }
+
+    const char *hostname = s_custom_device_name[0] ? s_custom_device_name : s_ap_name;
+    esp_err_t ret = esp_netif_set_hostname(s_wifi_netif, hostname);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Hostname set to %s", hostname);
+    } else {
+        ESP_LOGW(TAG, "Failed to set hostname: %s", esp_err_to_name(ret));
+    }
 }
 
 static esp_err_t wifi_load_config(void) {
@@ -283,6 +352,7 @@ static esp_err_t wifi_start_ap(void) {
     
     // Create AP interface
     s_wifi_netif = esp_netif_create_default_wifi_ap();
+    wifi_apply_hostname();
     
     // Configure AP using ESP-IDF wifi_config_t
     wifi_config_t wifi_config = {
@@ -326,6 +396,7 @@ static esp_err_t wifi_start_ap(void) {
     
     ESP_LOGI(TAG, "AP mode started. Connect to %s and open http://192.168.4.1", s_ap_name);
     s_status.state = WIFI_STATE_AP_MODE;
+    strncpy(s_status.ip_address, "192.168.4.1", sizeof(s_status.ip_address) - 1);
     
     return ESP_OK;
 }
@@ -339,6 +410,7 @@ static esp_err_t wifi_connect(void) {
     
     // Create STA interface
     s_wifi_netif = esp_netif_create_default_wifi_sta();
+    wifi_apply_hostname();
     
     // Configure WiFi using ESP-IDF wifi_config_t
     wifi_config_t wifi_config = {0};
@@ -479,6 +551,35 @@ bool wifi_manager_is_ap_mode(void) {
 
 const char* wifi_manager_get_ap_name(void) {
     return s_ap_name;
+}
+
+esp_err_t wifi_manager_get_device_name(char *name, size_t len) {
+    if (!name || len == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    const char *resolved = s_custom_device_name[0] ? s_custom_device_name : s_ap_name;
+    strncpy(name, resolved, len - 1);
+    name[len - 1] = '\0';
+    return ESP_OK;
+}
+
+esp_err_t wifi_manager_set_device_name(const char *name) {
+    if (!wifi_is_valid_device_name(name)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    strncpy(s_custom_device_name, name, sizeof(s_custom_device_name) - 1);
+    s_custom_device_name[sizeof(s_custom_device_name) - 1] = '\0';
+
+    esp_err_t ret = wifi_save_device_name(name);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    wifi_apply_hostname();
+    ESP_LOGI(TAG, "Device name updated to %s", name);
+    return ESP_OK;
 }
 
 bool wifi_manager_has_encrypted_credentials(void) {
