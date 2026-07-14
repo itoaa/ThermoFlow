@@ -372,9 +372,68 @@ esp_err_t audit_log_get_stats(audit_log_stats_t *stats)
 
     xSemaphoreTake(audit_state.mutex, portMAX_DELAY);
     memcpy(stats, &audit_state.stats, sizeof(audit_log_stats_t));
+    stats->entries_in_storage = audit_state.mem_buffer.count;
     xSemaphoreGive(audit_state.mutex);
 
     return ESP_OK;
+}
+
+esp_err_t audit_log_get_entry(uint32_t index, audit_log_entry_t *entry)
+{
+    if (!audit_state.initialized || !entry) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    xSemaphoreTake(audit_state.mutex, portMAX_DELAY);
+
+    if (index >= audit_state.mem_buffer.count) {
+        xSemaphoreGive(audit_state.mutex);
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    uint32_t slot;
+    if (audit_state.mem_buffer.count < MEM_BUFFER_SIZE) {
+        slot = index;
+    } else {
+        slot = (audit_state.mem_buffer.write_index + index) % MEM_BUFFER_SIZE;
+    }
+    memcpy(entry, &audit_state.mem_buffer.entries[slot], sizeof(audit_log_entry_t));
+
+    xSemaphoreGive(audit_state.mutex);
+    return ESP_OK;
+}
+
+esp_err_t audit_log_get_recent(audit_log_entry_t *entries, uint32_t max_entries,
+                               uint32_t *num_retrieved)
+{
+    if (!audit_state.initialized || !entries || !num_retrieved || max_entries == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    xSemaphoreTake(audit_state.mutex, portMAX_DELAY);
+
+    uint32_t available = audit_state.mem_buffer.count;
+    uint32_t to_copy = available < max_entries ? available : max_entries;
+    uint32_t newest = (audit_state.mem_buffer.write_index + MEM_BUFFER_SIZE - 1) % MEM_BUFFER_SIZE;
+
+    for (uint32_t i = 0; i < to_copy; i++) {
+        uint32_t slot = (newest + MEM_BUFFER_SIZE - i) % MEM_BUFFER_SIZE;
+        memcpy(&entries[i], &audit_state.mem_buffer.entries[slot], sizeof(audit_log_entry_t));
+    }
+
+    *num_retrieved = to_copy;
+    xSemaphoreGive(audit_state.mutex);
+    return ESP_OK;
+}
+
+const char *audit_log_event_type_str(audit_event_type_t type)
+{
+    return get_event_type_str(type);
+}
+
+const char *audit_log_severity_str(audit_severity_t severity)
+{
+    return get_severity_str(severity);
 }
 
 /**

@@ -209,6 +209,16 @@ esp_err_t audit_log_set_filter(audit_event_type_t event_type, bool filter);
  */
 esp_err_t audit_log_deinit(void);
 
+/**
+ * @brief Human-readable event type label
+ */
+const char *audit_log_event_type_str(audit_event_type_t type);
+
+/**
+ * @brief Human-readable severity label
+ */
+const char *audit_log_severity_str(audit_severity_t severity);
+
 #ifdef __cplusplus
 }
 #endif

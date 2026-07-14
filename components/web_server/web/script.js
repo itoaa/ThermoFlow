@@ -69,6 +69,7 @@ function init() {
     
     // Setup settings
     setupSettings();
+    setupLogs();
     
     // Start data fetching
     fetchAll();
@@ -144,6 +145,8 @@ function switchView(viewName) {
         fetchFTX();
     } else if (viewName === 'settings') {
         fetchDeviceInfo();
+    } else if (viewName === 'logs') {
+        fetchLogs();
     }
 }
 
@@ -565,6 +568,102 @@ async function fetchHardwareMode() {
 
     document.querySelectorAll('#data-source-control .segment').forEach(segment => {
         segment.classList.toggle('active', segment.dataset.source === data.data_source);
+    });
+}
+
+const logSeverityClass = {
+    DEBUG: 'debug',
+    INFO: 'info',
+    WARN: 'warn',
+    ERROR: 'error',
+    CRITICAL: 'critical'
+};
+
+function formatLogAge(ageS) {
+    if (ageS == null || Number.isNaN(ageS)) return '';
+    if (ageS < 60) return `${Math.round(ageS)} s sedan`;
+    if (ageS < 3600) return `${Math.round(ageS / 60)} min sedan`;
+    return `${Math.round(ageS / 3600)} h sedan`;
+}
+
+function renderLogs(data) {
+    const tbody = document.getElementById('log-table-body');
+    const countEl = document.getElementById('log-count');
+    const totalEl = document.getElementById('log-total');
+    if (!tbody) return;
+
+    const logs = data?.logs || [];
+    countEl.textContent = `${logs.length} händelser i bufferten`;
+    totalEl.textContent = `Totalt loggade: ${data?.total_logged ?? 0}`;
+
+    if (logs.length === 0) {
+        tbody.innerHTML = '<tr class="log-empty"><td colspan="4">Ingen loggdata ännu</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = logs.map(entry => {
+        const severity = entry.severity || 'INFO';
+        const badgeClass = logSeverityClass[severity] || 'info';
+        const timeLabel = entry.time || '--';
+        const ageLabel = formatLogAge(entry.age_s);
+        const timeCell = ageLabel ? `${timeLabel}<br><small>${ageLabel}</small>` : timeLabel;
+        return `
+            <tr>
+                <td>${timeCell}</td>
+                <td><span class="log-badge ${badgeClass}">${severity}</span></td>
+                <td>${entry.event || '--'}</td>
+                <td>${entry.message || ''}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function getDemoLogs() {
+    return {
+        count: 4,
+        total_logged: 42,
+        logs: [
+            { time: '+00:00:03', age_s: 120, severity: 'INFO', event: 'BOOT', message: 'Boot ThermoFlow 2026.29.39' },
+            { time: '+00:00:08', age_s: 115, severity: 'INFO', event: 'NET_CONNECT', message: 'HTTP web server started' },
+            { time: '+00:01:12', age_s: 11, severity: 'INFO', event: 'CONFIG_CHANGE', message: 'WiFi credentials updated for SSID S22' },
+            { time: '+00:01:45', age_s: 3, severity: 'WARN', event: 'RATE_LIMIT', message: 'Rate limit exceeded for /api/ftx' }
+        ]
+    };
+}
+
+async function fetchLogs() {
+    if (DEMO_MODE) {
+        renderLogs(getDemoLogs());
+        return;
+    }
+
+    const data = await fetchAPI('/logs');
+    if (!data) return;
+    renderLogs(data);
+}
+
+function setupLogs() {
+    document.getElementById('refresh-logs')?.addEventListener('click', () => {
+        fetchLogs();
+        showToast('Logg uppdaterad', 'info');
+    });
+
+    document.getElementById('clear-logs')?.addEventListener('click', async () => {
+        if (!confirm('Rensa systemloggen?')) return;
+
+        if (DEMO_MODE) {
+            renderLogs({ count: 0, total_logged: 0, logs: [] });
+            showToast('Demo-logg rensad', 'success');
+            return;
+        }
+
+        const response = await fetchAPI('/logs', { method: 'DELETE' });
+        if (response?.success) {
+            await fetchLogs();
+            showToast('Logg rensad', 'success');
+        } else {
+            showToast('Kunde inte rensa loggen', 'error');
+        }
     });
 }
 

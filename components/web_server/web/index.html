@@ -42,6 +42,10 @@
                 <i class="fas fa-recycle"></i>
                 <span>FTX</span>
             </a>
+            <a href="#" class="nav-link" data-view="logs">
+                <i class="fas fa-list-alt"></i>
+                <span>Logg</span>
+            </a>
             <a href="#" class="nav-link" data-view="settings">
                 <i class="fas fa-cog"></i>
                 <span>Inställningar</span>
@@ -265,6 +269,48 @@
                             <div class="status-badge ok">OK</div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Logs View -->
+        <div id="view-logs" class="view">
+            <header class="page-header">
+                <div>
+                    <h1>Systemlogg</h1>
+                    <p class="subtitle">Händelser, konfiguration och systemstatus</p>
+                </div>
+                <div class="log-actions">
+                    <button class="btn-sm btn-primary" id="refresh-logs">
+                        <i class="fas fa-sync-alt"></i> Uppdatera
+                    </button>
+                    <button class="btn-sm" id="clear-logs">
+                        <i class="fas fa-trash-alt"></i> Rensa
+                    </button>
+                </div>
+            </header>
+
+            <div class="glass-card log-card">
+                <div class="log-meta">
+                    <span id="log-count">0 händelser</span>
+                    <span id="log-total">Totalt loggade: 0</span>
+                </div>
+                <div class="log-table-wrap">
+                    <table class="log-table">
+                        <thead>
+                            <tr>
+                                <th>Tid</th>
+                                <th>Nivå</th>
+                                <th>Händelse</th>
+                                <th>Meddelande</th>
+                            </tr>
+                        </thead>
+                        <tbody id="log-table-body">
+                            <tr class="log-empty">
+                                <td colspan="4">Ingen loggdata ännu</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>

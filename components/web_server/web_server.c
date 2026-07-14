@@ -22,6 +22,7 @@
 // #include "esp_https_server.h" // DISABLED for ESP-IDF v5.1.2 compatibility
 #include "esp_wifi.h"
 #include "esp_mac.h"
+#include "esp_timer.h"
 #include "esp_tls.h"
 #include "cJSON.h"
 #include <stdio.h>
@@ -101,6 +102,8 @@ static esp_err_t device_info_handler(httpd_req_t *req);
 static esp_err_t device_name_handler(httpd_req_t *req);
 static esp_err_t device_restart_handler(httpd_req_t *req);
 static esp_err_t ota_status_handler(httpd_req_t *req);
+static esp_err_t logs_get_handler(httpd_req_t *req);
+static esp_err_t logs_clear_handler(httpd_req_t *req);
 static esp_err_t hardware_info_handler(httpd_req_t *req);
 static esp_err_t hardware_mode_get_handler(httpd_req_t *req);
 static esp_err_t hardware_mode_set_handler(httpd_req_t *req);
@@ -772,6 +775,22 @@ static void register_all_handlers(httpd_handle_t server)
         .user_ctx = NULL
     };
     httpd_register_uri_handler(server, &ota_status_uri);
+
+    httpd_uri_t logs_get_uri = {
+        .uri = "/api/logs",
+        .method = HTTP_GET,
+        .handler = logs_get_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &logs_get_uri);
+
+    httpd_uri_t logs_clear_uri = {
+        .uri = "/api/logs",
+        .method = HTTP_DELETE,
+        .handler = logs_clear_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &logs_clear_uri);
 }
 
 /* ============================================
@@ -1550,6 +1569,83 @@ static esp_err_t ota_status_handler(httpd_req_t *req)
         "Alternativt: flasha via USB (esptool) eller idf.py flash.");
 
     return send_json_response(req, root);
+}
+
+static void add_log_entry_json(cJSON *array, const audit_log_entry_t *entry, uint64_t now_us)
+{
+    cJSON *item = cJSON_CreateObject();
+    cJSON_AddNumberToObject(item, "sequence", entry->sequence);
+    cJSON_AddNumberToObject(item, "timestamp_us", (double)entry->timestamp_us);
+    cJSON_AddNumberToObject(item, "age_s", (double)((now_us - entry->timestamp_us) / 1000000ULL));
+    cJSON_AddStringToObject(item, "event", audit_log_event_type_str(entry->event_type));
+    cJSON_AddStringToObject(item, "severity", audit_log_severity_str(entry->severity));
+    cJSON_AddStringToObject(item, "message", entry->message);
+
+    char uptime_buf[16];
+    uint32_t uptime_s = (uint32_t)(entry->timestamp_us / 1000000ULL);
+    snprintf(uptime_buf, sizeof(uptime_buf), "+%02lu:%02lu:%02lu",
+             (unsigned long)(uptime_s / 3600),
+             (unsigned long)((uptime_s / 60) % 60),
+             (unsigned long)(uptime_s % 60));
+    cJSON_AddStringToObject(item, "time", uptime_buf);
+
+    cJSON_AddItemToArray(array, item);
+}
+
+// GET /api/logs - Recent audit/system log entries
+static esp_err_t logs_get_handler(httpd_req_t *req)
+{
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
+    add_security_headers(req);
+
+    audit_log_entry_t entries[50];
+    uint32_t count = 0;
+    esp_err_t ret = audit_log_get_recent(entries, 50, &count);
+    if (ret != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Log read failed");
+        return ESP_FAIL;
+    }
+
+    uint64_t now_us = esp_timer_get_time();
+    audit_log_stats_t stats = {0};
+    audit_log_get_stats(&stats);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON *logs = cJSON_CreateArray();
+    for (uint32_t i = 0; i < count; i++) {
+        add_log_entry_json(logs, &entries[i], now_us);
+    }
+
+    cJSON_AddItemToObject(root, "logs", logs);
+    cJSON_AddNumberToObject(root, "count", count);
+    cJSON_AddNumberToObject(root, "capacity", 50);
+    cJSON_AddNumberToObject(root, "total_logged", stats.total_entries);
+    cJSON_AddNumberToObject(root, "uptime_us", (double)now_us);
+    return send_json_response(req, root);
+}
+
+// DELETE /api/logs - Clear in-memory audit log
+static esp_err_t logs_clear_handler(httpd_req_t *req)
+{
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
+    add_security_headers(req);
+
+    esp_err_t ret = audit_log_clear();
+    if (ret != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Log clear failed");
+        return ESP_FAIL;
+    }
+
+    audit_log_event(AUDIT_EVENT_CONFIG_CHANGE, AUDIT_SEVERITY_INFO,
+                    "Audit log cleared from web UI");
+
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "success", true);
+    return send_json_response(req, response);
 }
 
 // GET /api/device/info - Return device info (MAC, name, etc.)
