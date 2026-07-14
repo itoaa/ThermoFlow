@@ -5,6 +5,9 @@
 
 ## Klart (2026-07-14)
 
+- [x] Unified `log_manager` (serial, web, NVS, MQTT sink, SD stub)
+- [x] Structured logging API (`TF_LOG_*`), export NDJSON, web config
+- [x] [LOGGING.md](LOGGING.md) architecture documentation
 - [x] CalVer versioning `YYYY.WW.BUILD` + lokal `+gitsha`
 - [x] WiFi NVS-persistens (dual-write, legacy backup, app-flash default)
 - [x] AP+STA fallback utan att radera credentials

@@ -26,7 +26,7 @@ ThermoFlow is an ESP32-S3 based system for monitoring temperature and humidity, 
 | AP+STA fallback (sparade uppgifter, ingen falsk onboarding) | ✅ |
 | Enhets-ID från MAC + redigerbart visningsnamn | ✅ |
 | HTTP web server + SPA (dashboard, FTX, inställningar, logg) | ✅ |
-| Audit log i webben (`GET /api/logs`) | ✅ |
+| Unified logging (`log_manager`: serial, web, NVS, MQTT) | ✅ |
 | MQTT / FTX (when broker configured) | ✅ |
 | Heat recovery / FTX calculations | ✅ |
 | Anti-condensation (per operating mode) | ✅ |
@@ -88,8 +88,10 @@ Enhets-ID: `ThermoFlow-XXXX` (XXXX = sista 4 hex av MAC). Visningsnamn ändras u
 | `/api/device/info` | GET | Enhets-ID, namn, WiFi-status, version |
 | `/api/wifi/config` | POST | Spara WiFi-uppgifter |
 | `/api/wifi/config` | DELETE | Återställ WiFi |
-| `/api/logs` | GET | Audit/systemlogg (senaste 50 händelser) |
+| `/api/logs` | GET | Strukturerad systemlogg (100 poster) |
 | `/api/logs` | DELETE | Rensa logg |
+| `/api/logs/config` | GET/PUT | Loggnivå och sinks |
+| `/api/logs/export` | GET | Exportera NDJSON/JSON |
 | `/api/hardware` | GET | Hårdvarustatus och pin-konfiguration |
 | `/api/sensors` | GET | Sensorvärden |
 | `/api/fans` | GET/POST | Fläktstatus och styrning |
@@ -132,6 +134,7 @@ Exempel `GET /api/device/info`:
 
 | Document | Purpose |
 |----------|---------|
+| [LOGGING.md](docs/LOGGING.md) | Unified logging architecture |
 | [WIFI_AND_FLASH.md](docs/WIFI_AND_FLASH.md) | WiFi, onboarding, app-flash, felsökning |
 | [VERSIONING.md](docs/VERSIONING.md) | CalVer `YYYY.WW.BUILD` |
 | [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | Komponent- och firmwarestatus |

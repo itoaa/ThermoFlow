@@ -15,6 +15,7 @@ idf_component_register(
         security_utils
         rate_limiter
         audit_log
+        log_manager
         wifi_manager
         ota_manager
     EMBED_FILES

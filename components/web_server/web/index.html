@@ -284,16 +284,52 @@
                     <button class="btn-sm btn-primary" id="refresh-logs">
                         <i class="fas fa-sync-alt"></i> Uppdatera
                     </button>
+                    <button class="btn-sm" id="export-logs">
+                        <i class="fas fa-download"></i> Exportera
+                    </button>
+                    <button class="btn-sm" id="toggle-log-config">
+                        <i class="fas fa-sliders-h"></i> Konfiguration
+                    </button>
                     <button class="btn-sm" id="clear-logs">
                         <i class="fas fa-trash-alt"></i> Rensa
                     </button>
                 </div>
             </header>
 
+            <div class="glass-card log-card" id="log-config-panel" style="display:none; margin-bottom: 16px;">
+                <h3>Loggkonfiguration</h3>
+                <div class="info-list">
+                    <div class="info-item">
+                        <span class="info-label">Min nivå</span>
+                        <select id="log-min-level" class="input-sm">
+                            <option value="TRACE">TRACE</option>
+                            <option value="DEBUG">DEBUG</option>
+                            <option value="INFO" selected>INFO</option>
+                            <option value="WARN">WARN</option>
+                            <option value="ERROR">ERROR</option>
+                            <option value="FATAL">FATAL</option>
+                        </select>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Serial JSON</span>
+                        <label><input type="checkbox" id="log-serial-json"> Strukturerad JSON på UART</label>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Sinks</span>
+                        <label><input type="checkbox" class="log-sink" value="serial" checked> Serial</label>
+                        <label><input type="checkbox" class="log-sink" value="web" checked> Web</label>
+                        <label><input type="checkbox" class="log-sink" value="nvs" checked> NVS</label>
+                        <label><input type="checkbox" class="log-sink" value="mqtt"> MQTT</label>
+                    </div>
+                </div>
+                <button class="btn-sm btn-primary" id="save-log-config">Spara loggkonfiguration</button>
+            </div>
+
             <div class="glass-card log-card">
                 <div class="log-meta">
                     <span id="log-count">0 händelser</span>
                     <span id="log-total">Totalt loggade: 0</span>
+                    <span id="log-sinks">Sinks: --</span>
                 </div>
                 <div class="log-table-wrap">
                     <table class="log-table">
@@ -301,13 +337,15 @@
                             <tr>
                                 <th>Tid</th>
                                 <th>Nivå</th>
+                                <th>Kategori</th>
+                                <th>Källa</th>
                                 <th>Händelse</th>
                                 <th>Meddelande</th>
                             </tr>
                         </thead>
                         <tbody id="log-table-body">
                             <tr class="log-empty">
-                                <td colspan="4">Ingen loggdata ännu</td>
+                                <td colspan="6">Ingen loggdata ännu</td>
                             </tr>
                         </tbody>
                     </table>

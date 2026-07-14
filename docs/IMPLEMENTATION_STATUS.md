@@ -23,7 +23,7 @@ Firmware integrerar alla kärnkomponenter i `main.c`. HTTP-webbserver startas vi
 | heat_recovery | ✅ | ✅ | ✅ |
 | ota_manager | ✅ | ✅ | — |
 | security_utils + Ed25519 | ✅ | ✅ | — |
-| audit_log (+ web `/api/logs`) | ✅ | ✅ | — |
+| log_manager (multi-sink) + audit_log facade | ✅ | ✅ | — |
 | rate_limiter | ✅ | ✅ | — |
 | display_driver (SSD1306) | ✅ | ✅** | — |
 | CalVer `generate_version.py` | ✅ | ✅ | — |
@@ -59,7 +59,7 @@ NVS → security_manager → audit_log → rate_limiter → hardware_manager
 | Sensorer | ✅ |
 | FTX | ✅ |
 | Inställningar (ID, namn, WiFi) | ✅ |
-| Logg (audit events) | ✅ |
+| Logg (structured, export, config) | ✅ |
 | Onboarding (`wifi_config.html`) | ✅ (endast utan sparad WiFi) |
 | Väntesida (`wifi_reconnect.html`) | ✅ (AP+STA fallback) |
 

@@ -12,6 +12,7 @@
 #include "mqtt_ftx.h"
 #include "mqtt_client.h"
 #include "security_manager.h"
+#include "log_manager.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -417,6 +418,27 @@ mqtt_status_t mqtt_ftx_get_status(void)
 
     mqtt_status_info_t info = mqtt_client_get_status(s_mqtt_client);
     return info.connected ? MQTT_STATUS_CONNECTED : MQTT_STATUS_DISCONNECTED;
+}
+
+esp_err_t mqtt_ftx_publish_raw(const char *topic, const char *payload, size_t len)
+{
+    if (!s_initialized || !s_mqtt_client || !topic || !payload) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!mqtt_client_is_connected(s_mqtt_client)) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return mqtt_client_publish(s_mqtt_client, topic, (const uint8_t *)payload, len, 0, 0);
+}
+
+static esp_err_t mqtt_log_sink_publish(const char *topic, const char *payload, size_t len)
+{
+    return mqtt_ftx_publish_raw(topic, payload, len);
+}
+
+esp_err_t mqtt_ftx_register_log_sink(void)
+{
+    return log_manager_set_mqtt_publish(mqtt_log_sink_publish);
 }
 
 esp_err_t mqtt_ftx_deinit(void)

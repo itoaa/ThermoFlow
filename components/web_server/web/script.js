@@ -590,19 +590,24 @@ function renderLogs(data) {
     const tbody = document.getElementById('log-table-body');
     const countEl = document.getElementById('log-count');
     const totalEl = document.getElementById('log-total');
+    const sinksEl = document.getElementById('log-sinks');
     if (!tbody) return;
 
     const logs = data?.logs || [];
-    countEl.textContent = `${logs.length} händelser i bufferten`;
+    countEl.textContent = `${logs.length} händelser i bufferten (kapacitet ${data?.capacity ?? 100})`;
     totalEl.textContent = `Totalt loggade: ${data?.total_logged ?? 0}`;
+    if (sinksEl) {
+        const sinks = Array.isArray(data?.sinks) ? data.sinks.join(', ') : '--';
+        sinksEl.textContent = `Sinks: ${sinks}`;
+    }
 
     if (logs.length === 0) {
-        tbody.innerHTML = '<tr class="log-empty"><td colspan="4">Ingen loggdata ännu</td></tr>';
+        tbody.innerHTML = '<tr class="log-empty"><td colspan="6">Ingen loggdata ännu</td></tr>';
         return;
     }
 
     tbody.innerHTML = logs.map(entry => {
-        const severity = entry.severity || 'INFO';
+        const severity = entry.severity || entry.level || 'INFO';
         const badgeClass = logSeverityClass[severity] || 'info';
         const timeLabel = entry.time || '--';
         const ageLabel = formatLogAge(entry.age_s);
@@ -611,6 +616,8 @@ function renderLogs(data) {
             <tr>
                 <td>${timeCell}</td>
                 <td><span class="log-badge ${badgeClass}">${severity}</span></td>
+                <td>${entry.category || '--'}</td>
+                <td>${entry.component || '--'}</td>
                 <td>${entry.event || '--'}</td>
                 <td>${entry.message || ''}</td>
             </tr>
@@ -642,10 +649,67 @@ async function fetchLogs() {
     renderLogs(data);
 }
 
+async function fetchLogConfig() {
+    if (DEMO_MODE) return;
+    const data = await fetchAPI('/logs/config');
+    if (!data) return;
+
+    const levelEl = document.getElementById('log-min-level');
+    if (levelEl && data.min_level) levelEl.value = data.min_level;
+
+    const serialJsonEl = document.getElementById('log-serial-json');
+    if (serialJsonEl) serialJsonEl.checked = !!data.serial_json;
+
+    const active = new Set(Array.isArray(data.sinks) ? data.sinks : []);
+    document.querySelectorAll('.log-sink').forEach(cb => {
+        cb.checked = active.has(cb.value);
+    });
+}
+
+async function saveLogConfig() {
+    const sinks = Array.from(document.querySelectorAll('.log-sink:checked')).map(cb => cb.value);
+    const body = {
+        min_level: document.getElementById('log-min-level')?.value || 'INFO',
+        serial_json: !!document.getElementById('log-serial-json')?.checked,
+        sinks
+    };
+
+    const response = await fetchAPI('/logs/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+
+    if (response?.success) {
+        showToast('Loggkonfiguration sparad', 'success');
+        await fetchLogs();
+    } else {
+        showToast('Kunde inte spara loggkonfiguration', 'error');
+    }
+}
+
 function setupLogs() {
     document.getElementById('refresh-logs')?.addEventListener('click', () => {
         fetchLogs();
         showToast('Logg uppdaterad', 'info');
+    });
+
+    document.getElementById('toggle-log-config')?.addEventListener('click', async () => {
+        const panel = document.getElementById('log-config-panel');
+        if (!panel) return;
+        const show = panel.style.display === 'none';
+        panel.style.display = show ? 'block' : 'none';
+        if (show) await fetchLogConfig();
+    });
+
+    document.getElementById('save-log-config')?.addEventListener('click', saveLogConfig);
+
+    document.getElementById('export-logs')?.addEventListener('click', () => {
+        if (DEMO_MODE) {
+            showToast('Export ej tillgänglig i demo-läge', 'info');
+            return;
+        }
+        window.open('/api/logs/export?format=ndjson', '_blank');
     });
 
     document.getElementById('clear-logs')?.addEventListener('click', async () => {

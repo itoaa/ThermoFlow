@@ -45,6 +45,7 @@ typedef enum {
     AUDIT_EVENT_RATE_LIMIT_HIT,     /**< Rate limit exceeded */
     AUDIT_EVENT_SYSTEM_BOOT,        /**< System boot */
     AUDIT_EVENT_SYSTEM_SHUTDOWN,    /**< System shutdown */
+    AUDIT_EVENT_GENERAL,            /**< Generic structured log entry */
     AUDIT_EVENT_MAX
 } audit_event_type_t;
 
@@ -66,10 +67,14 @@ typedef struct {
     uint32_t magic;                 /**< Magic number for validation */
     uint32_t sequence;              /**< Sequence number */
     uint64_t timestamp_us;          /**< Timestamp in microseconds */
-    audit_event_type_t event_type;   /**< Event type */
-    audit_severity_t severity;       /**< Severity level */
-    uint32_t checksum;              /**< Entry checksum */
+    audit_event_type_t event_type;  /**< Event type */
+    audit_severity_t severity;      /**< Severity level */
+    uint32_t checksum;              /**< Entry checksum (legacy) */
     char message[AUDIT_LOG_MAX_MESSAGE_LEN]; /**< Log message */
+    uint32_t boot_id;               /**< Boot session identifier */
+    uint32_t correlation_id;        /**< Correlation / trace id */
+    uint8_t category;               /**< tf_log_category_t */
+    char component[16];               /**< Source component tag */
 } audit_log_entry_t;
 
 /**

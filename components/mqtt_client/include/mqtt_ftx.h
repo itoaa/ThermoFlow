@@ -12,6 +12,7 @@
 #ifndef MQTT_FTX_H
 #define MQTT_FTX_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include "esp_err.h"
@@ -133,6 +134,16 @@ esp_err_t mqtt_ftx_connect(void);
  * @return ESP_OK on success
  */
 esp_err_t mqtt_ftx_disconnect(void);
+
+/**
+ * @brief Publish raw payload to an MQTT topic (used by log sink)
+ */
+esp_err_t mqtt_ftx_publish_raw(const char *topic, const char *payload, size_t len);
+
+/**
+ * @brief Register MQTT as a remote log sink (topic: thermoflow/logs)
+ */
+esp_err_t mqtt_ftx_register_log_sink(void);
 
 /**
  * @brief Publish FTX sensor data

@@ -109,7 +109,10 @@ typedef enum {
 #define TF_CFG_RATE_LIMIT_MQTT_RPS      100     // per second
 #define TF_CFG_RATE_LIMIT_LOGIN_RPM       5       // per minute
 
-// Logging configuration (SR-005)
+// Logging configuration (SR-005) — see docs/LOGGING.md
+#define TF_LOG_RAM_CAPACITY           100
+#define TF_LOG_NVS_CAPACITY           32
+#define TF_LOG_MQTT_TOPIC_DEFAULT     "thermoflow/logs"
 #define LOG_BUFFER_SIZE               4096
 #define LOG_FILE_PATH                 "/sd/logs/thermoflow.log"
 #define LOG_ROTATION_SIZE             1048576 // 1 MB

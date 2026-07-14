@@ -12,6 +12,7 @@
 
 #include "wifi_manager.h"
 #include "wifi_secure_storage.h"
+#include "log_manager.h"
 #include "esp_wifi.h"
 #include "esp_mac.h"
 #include "esp_log.h"
@@ -458,6 +459,8 @@ static void wifi_configure_ap_netif(esp_netif_t *ap_netif) {
 static esp_err_t wifi_start_apsta_fallback(void) {
     ESP_LOGI(TAG, "AP+STA fallback for saved SSID %s (setup AP %s)",
              s_wifi_config.ssid, s_ap_name);
+    TF_LOG_WARN(TF_LOG_CAT_NETWORK, TAG,
+                "AP+STA fallback active for %s (setup AP %s)", s_wifi_config.ssid, s_ap_name);
 
     s_ap_fallback_active = true;
     s_connect_in_progress = true;
@@ -601,6 +604,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                 wifi_event_sta_disconnected_t *disc =
                     (wifi_event_sta_disconnected_t *)event_data;
                 ESP_LOGW(TAG, "STA disconnected (reason=%d)", disc ? disc->reason : -1);
+                TF_LOG_WARN(TF_LOG_CAT_NETWORK, TAG, "WiFi disconnected (reason=%d)", disc ? disc->reason : -1);
                 s_status.state = WIFI_STATE_DISCONNECTED;
 
                 if (s_connect_in_progress && s_connect_retries < WIFI_MAX_RETRIES) {
@@ -645,8 +649,11 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
         s_connect_in_progress = false;
         s_connect_retries = 0;
 
+        TF_LOG_INFO(TF_LOG_CAT_NETWORK, TAG, "WiFi connected, IP %s", s_status.ip_address);
+
         if (s_ap_fallback_active) {
             ESP_LOGI(TAG, "Home WiFi connected — disabling setup AP");
+            TF_LOG_INFO(TF_LOG_CAT_NETWORK, TAG, "AP+STA fallback ended — home WiFi %s", s_status.ip_address);
             esp_wifi_set_mode(WIFI_MODE_STA);
             s_ap_fallback_active = false;
         }

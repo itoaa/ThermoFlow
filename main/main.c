@@ -27,6 +27,7 @@
 #include "mqtt_ftx.h"
 #include "security_manager.h"
 #include "audit_log.h"
+#include "log_manager.h"
 #include "rate_limiter.h"
 #include "display_manager.h"
 
@@ -270,7 +271,9 @@ static void try_start_mqtt(void)
 
     if (ret == ESP_OK) {
         g_mqtt_started = true;
+        mqtt_ftx_register_log_sink();
         audit_log_event(AUDIT_EVENT_MQTT_CONNECT, AUDIT_SEVERITY_INFO, "MQTT connected");
+        TF_LOG_INFO(TF_LOG_CAT_MQTT, TAG, "MQTT connected — remote log sink enabled");
         mqtt_ftx_ha_discovery();
     }
 }
@@ -370,10 +373,11 @@ static void control_task(void *pvParameters)
         static uint32_t last_log_time = 0;
         uint32_t now = esp_log_timestamp();
         if (now - last_log_time >= MAIN_LOOP_INTERVAL_MS) {
-            ESP_LOGI(TAG, "Temp=%.1fC RH=%.1f%% Fan=%u%% Mode=%d Cond=%s FTX=%.1f%%",
-                     temp_c, rh_percent, fan1, (int)g_operating_mode,
-                     anti_condensation_is_active() ? "YES" : "no",
-                     g_ftx_data.efficiency_percent);
+            TF_LOG_INFO(TF_LOG_CAT_SENSOR, TAG,
+                        "Temp=%.1fC RH=%.1f%% Fan=%u%% Mode=%d Cond=%s FTX=%.1f%%",
+                        temp_c, rh_percent, fan1, (int)g_operating_mode,
+                        anti_condensation_is_active() ? "YES" : "no",
+                        g_ftx_data.efficiency_percent);
             last_log_time = now;
         }
 
@@ -446,8 +450,8 @@ void app_main(void)
         .wrap_around = true,
     };
     audit_log_init(&audit_cfg);
-    audit_log_event(AUDIT_EVENT_SYSTEM_BOOT, AUDIT_SEVERITY_INFO,
-                    "Boot ThermoFlow %s", THERMOFLOW_VERSION_STRING);
+    TF_LOG_INFO(TF_LOG_CAT_SYSTEM, TAG, "Boot ThermoFlow %s (%s)",
+                THERMOFLOW_VERSION_STRING, THERMOFLOW_VERSION_FULL);
 
     rate_limiter_init();
 

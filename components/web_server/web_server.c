@@ -37,6 +37,7 @@
 #include "security_manager.h"
 #include "rate_limiter.h"
 #include "audit_log.h"
+#include "log_manager.h"
 #include "web_static.h"
 #include "wifi_manager.h"
 #include "ota_manager.h"
@@ -104,6 +105,9 @@ static esp_err_t device_restart_handler(httpd_req_t *req);
 static esp_err_t ota_status_handler(httpd_req_t *req);
 static esp_err_t logs_get_handler(httpd_req_t *req);
 static esp_err_t logs_clear_handler(httpd_req_t *req);
+static esp_err_t logs_config_get_handler(httpd_req_t *req);
+static esp_err_t logs_config_put_handler(httpd_req_t *req);
+static esp_err_t logs_export_handler(httpd_req_t *req);
 static esp_err_t hardware_info_handler(httpd_req_t *req);
 static esp_err_t hardware_mode_get_handler(httpd_req_t *req);
 static esp_err_t hardware_mode_set_handler(httpd_req_t *req);
@@ -791,6 +795,30 @@ static void register_all_handlers(httpd_handle_t server)
         .user_ctx = NULL
     };
     httpd_register_uri_handler(server, &logs_clear_uri);
+
+    httpd_uri_t logs_config_get_uri = {
+        .uri = "/api/logs/config",
+        .method = HTTP_GET,
+        .handler = logs_config_get_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &logs_config_get_uri);
+
+    httpd_uri_t logs_config_put_uri = {
+        .uri = "/api/logs/config",
+        .method = HTTP_PUT,
+        .handler = logs_config_put_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &logs_config_put_uri);
+
+    httpd_uri_t logs_export_uri = {
+        .uri = "/api/logs/export",
+        .method = HTTP_GET,
+        .handler = logs_export_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &logs_export_uri);
 }
 
 /* ============================================
@@ -1577,8 +1605,13 @@ static void add_log_entry_json(cJSON *array, const audit_log_entry_t *entry, uin
     cJSON_AddNumberToObject(item, "sequence", entry->sequence);
     cJSON_AddNumberToObject(item, "timestamp_us", (double)entry->timestamp_us);
     cJSON_AddNumberToObject(item, "age_s", (double)((now_us - entry->timestamp_us) / 1000000ULL));
+    cJSON_AddNumberToObject(item, "boot_id", entry->boot_id);
+    cJSON_AddNumberToObject(item, "correlation_id", entry->correlation_id);
     cJSON_AddStringToObject(item, "event", audit_log_event_type_str(entry->event_type));
     cJSON_AddStringToObject(item, "severity", audit_log_severity_str(entry->severity));
+    cJSON_AddStringToObject(item, "level", audit_log_severity_str(entry->severity));
+    cJSON_AddStringToObject(item, "category", tf_log_category_str((tf_log_category_t)entry->category));
+    cJSON_AddStringToObject(item, "component", entry->component[0] ? entry->component : "system");
     cJSON_AddStringToObject(item, "message", entry->message);
 
     char uptime_buf[16];
@@ -1592,6 +1625,17 @@ static void add_log_entry_json(cJSON *array, const audit_log_entry_t *entry, uin
     cJSON_AddItemToArray(array, item);
 }
 
+static void add_log_sinks_json(cJSON *root, tf_log_sink_mask_t sinks)
+{
+    cJSON *arr = cJSON_CreateArray();
+    if (sinks & TF_LOG_SINK_SERIAL) cJSON_AddItemToArray(arr, cJSON_CreateString("serial"));
+    if (sinks & TF_LOG_SINK_WEB)    cJSON_AddItemToArray(arr, cJSON_CreateString("web"));
+    if (sinks & TF_LOG_SINK_NVS)    cJSON_AddItemToArray(arr, cJSON_CreateString("nvs"));
+    if (sinks & TF_LOG_SINK_MQTT)   cJSON_AddItemToArray(arr, cJSON_CreateString("mqtt"));
+    if (sinks & TF_LOG_SINK_SD)     cJSON_AddItemToArray(arr, cJSON_CreateString("sd"));
+    cJSON_AddItemToObject(root, "sinks", arr);
+}
+
 // GET /api/logs - Recent audit/system log entries
 static esp_err_t logs_get_handler(httpd_req_t *req)
 {
@@ -1600,9 +1644,9 @@ static esp_err_t logs_get_handler(httpd_req_t *req)
     }
     add_security_headers(req);
 
-    audit_log_entry_t entries[50];
+    audit_log_entry_t entries[TF_LOG_DEFAULT_CAPACITY];
     uint32_t count = 0;
-    esp_err_t ret = audit_log_get_recent(entries, 50, &count);
+    esp_err_t ret = audit_log_get_recent(entries, TF_LOG_DEFAULT_CAPACITY, &count);
     if (ret != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Log read failed");
         return ESP_FAIL;
@@ -1618,12 +1662,149 @@ static esp_err_t logs_get_handler(httpd_req_t *req)
         add_log_entry_json(logs, &entries[i], now_us);
     }
 
+    tf_log_stats_t lm_stats = {0};
+    log_manager_get_stats(&lm_stats);
+
     cJSON_AddItemToObject(root, "logs", logs);
     cJSON_AddNumberToObject(root, "count", count);
-    cJSON_AddNumberToObject(root, "capacity", 50);
+    cJSON_AddNumberToObject(root, "capacity", TF_LOG_DEFAULT_CAPACITY);
     cJSON_AddNumberToObject(root, "total_logged", stats.total_entries);
+    cJSON_AddNumberToObject(root, "wrap_count", lm_stats.wrap_count);
+    cJSON_AddNumberToObject(root, "boot_id", lm_stats.boot_id);
     cJSON_AddNumberToObject(root, "uptime_us", (double)now_us);
+    add_log_sinks_json(root, lm_stats.active_sinks);
+    cJSON_AddStringToObject(root, "format", "structured_json_v1");
     return send_json_response(req, root);
+}
+
+static esp_err_t logs_config_get_handler(httpd_req_t *req)
+{
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
+    add_security_headers(req);
+
+    tf_log_config_t cfg = {0};
+    tf_log_stats_t stats = {0};
+    log_manager_get_config(&cfg);
+    log_manager_get_stats(&stats);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "min_level", tf_log_level_str(cfg.min_level));
+    cJSON_AddStringToObject(root, "min_serial_level", tf_log_level_str(cfg.min_serial_level));
+    cJSON_AddBoolToObject(root, "serial_json", cfg.serial_json);
+    cJSON_AddBoolToObject(root, "nvs_persist", cfg.nvs_persist);
+    cJSON_AddNumberToObject(root, "capacity", cfg.capacity);
+    cJSON_AddStringToObject(root, "mqtt_topic", cfg.mqtt_topic);
+    cJSON_AddNumberToObject(root, "boot_id", stats.boot_id);
+    add_log_sinks_json(root, cfg.sinks);
+    return send_json_response(req, root);
+}
+
+static esp_err_t logs_config_put_handler(httpd_req_t *req)
+{
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
+    add_security_headers(req);
+
+    char body[512] = {0};
+    int received = httpd_req_recv(req, body, sizeof(body) - 1);
+    if (received <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty body");
+        return ESP_FAIL;
+    }
+
+    cJSON *json = cJSON_Parse(body);
+    if (!json) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    tf_log_config_t cfg = {0};
+    log_manager_get_config(&cfg);
+
+    cJSON *min_level = cJSON_GetObjectItem(json, "min_level");
+    if (cJSON_IsString(min_level)) {
+        const char *v = min_level->valuestring;
+        if (strcmp(v, "TRACE") == 0) cfg.min_level = TF_LOG_LEVEL_TRACE;
+        else if (strcmp(v, "DEBUG") == 0) cfg.min_level = TF_LOG_LEVEL_DEBUG;
+        else if (strcmp(v, "INFO") == 0) cfg.min_level = TF_LOG_LEVEL_INFO;
+        else if (strcmp(v, "WARN") == 0) cfg.min_level = TF_LOG_LEVEL_WARN;
+        else if (strcmp(v, "ERROR") == 0) cfg.min_level = TF_LOG_LEVEL_ERROR;
+        else if (strcmp(v, "FATAL") == 0) cfg.min_level = TF_LOG_LEVEL_FATAL;
+    }
+
+    cJSON *serial_json = cJSON_GetObjectItem(json, "serial_json");
+    if (cJSON_IsBool(serial_json)) {
+        cfg.serial_json = cJSON_IsTrue(serial_json);
+    }
+
+    cJSON *nvs_persist = cJSON_GetObjectItem(json, "nvs_persist");
+    if (cJSON_IsBool(nvs_persist)) {
+        cfg.nvs_persist = cJSON_IsTrue(nvs_persist);
+    }
+
+    cJSON *sinks = cJSON_GetObjectItem(json, "sinks");
+    if (cJSON_IsArray(sinks)) {
+        cfg.sinks = 0;
+        cJSON *item = NULL;
+        cJSON_ArrayForEach(item, sinks) {
+            if (!cJSON_IsString(item)) continue;
+            if (strcmp(item->valuestring, "serial") == 0) cfg.sinks |= TF_LOG_SINK_SERIAL;
+            else if (strcmp(item->valuestring, "web") == 0) cfg.sinks |= TF_LOG_SINK_WEB;
+            else if (strcmp(item->valuestring, "nvs") == 0) cfg.sinks |= TF_LOG_SINK_NVS;
+            else if (strcmp(item->valuestring, "mqtt") == 0) cfg.sinks |= TF_LOG_SINK_MQTT;
+            else if (strcmp(item->valuestring, "sd") == 0) cfg.sinks |= TF_LOG_SINK_SD;
+        }
+    }
+
+    log_manager_set_config(&cfg);
+    audit_log_event(AUDIT_EVENT_CONFIG_CHANGE, AUDIT_SEVERITY_INFO,
+                    "Log configuration updated from web UI");
+
+    cJSON_Delete(json);
+
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "success", true);
+    return send_json_response(req, response);
+}
+
+static esp_err_t logs_export_handler(httpd_req_t *req)
+{
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
+    add_security_headers(req);
+
+    char format[16] = "ndjson";
+    char query[64] = {0};
+    if (httpd_req_get_url_query_len(req) > 0 &&
+        httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char value[16] = {0};
+        if (httpd_query_key_value(query, "format", value, sizeof(value)) == ESP_OK) {
+            strncpy(format, value, sizeof(format) - 1);
+        }
+    }
+
+    static char export_buf[16384];
+    size_t exported = 0;
+    esp_err_t ret;
+    if (strcmp(format, "json") == 0) {
+        ret = log_manager_export_json(export_buf, sizeof(export_buf), &exported);
+        httpd_resp_set_type(req, "application/json");
+    } else {
+        ret = log_manager_export_ndjson(export_buf, sizeof(export_buf), &exported);
+        httpd_resp_set_type(req, "application/x-ndjson");
+    }
+
+    if (ret != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Export failed");
+        return ESP_FAIL;
+    }
+
+    httpd_resp_send(req, export_buf, exported);
+    return ESP_OK;
 }
 
 // DELETE /api/logs - Clear in-memory audit log

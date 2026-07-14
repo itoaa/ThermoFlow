@@ -8,6 +8,7 @@ idf_component_register(
         mbedtls
         json
         security_utils
+        log_manager
     PRIV_REQUIRES
         freertos
 )

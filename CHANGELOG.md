@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **log_manager** — unified multi-sink logging (serial, web, NVS, MQTT, SD stub)
+- Structured JSON v1 log entries with `boot_id`, `correlation_id`, category, component
+- `GET/PUT /api/logs/config`, `GET /api/logs/export` (NDJSON/JSON)
+- Web Logg UI: category/source columns, export, runtime sink configuration
+- NVS log persistence (32 entries across reboot)
+- MQTT remote log sink (`thermoflow/logs`) when broker connected
+- `TF_LOG_*` macros and [docs/LOGGING.md](docs/LOGGING.md)
 - CalVer versioning scheme `YYYY.WW.BUILD` with CI build number and local `+gitsha` suffix
 - `build-local.ps1` / `flash-local.ps1` for Windows development
 - Web UI **Logg** tab with `GET/DELETE /api/logs` (audit log viewer)
@@ -22,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docs: [WIFI_AND_FLASH.md](docs/WIFI_AND_FLASH.md), [VERSIONING.md](docs/VERSIONING.md)
 
 ### Changed
+- `audit_log` refactored as SR-005 facade over `log_manager`
+- Ring buffer capacity increased to 100 entries
+- Implemented `audit_log_export_json`, `audit_log_verify`, `audit_log_set_filter`
 - **Flash default is app-flash** (`flash.sh`, `flash-local.ps1`) — NVS/WiFi preserved
 - WiFi credentials dual-written to encrypted + legacy NVS; migration keeps legacy backup
 - AP+STA fallback: 15 retries, 90 s timeout; credentials never cleared on timeout

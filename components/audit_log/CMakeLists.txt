@@ -1,5 +1,5 @@
 idf_component_register(
     SRCS "audit_log.c"
     INCLUDE_DIRS "include"
-    REQUIRES nvs_flash esp_timer freertos log esp_hw_support
+    REQUIRES log_manager nvs_flash esp_timer freertos log esp_hw_support
 )
