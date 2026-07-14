@@ -55,11 +55,11 @@ extern "C" {
 #define DEVICE_NVS_KEY_NAME       "name"
 #define DEVICE_NAME_MAX_LEN       32
 
-/* WiFi connection timeout (seconds) */
-#define WIFI_CONNECT_TIMEOUT_S  30
+/* WiFi connection timeout (seconds) — routers may need time after reboot */
+#define WIFI_CONNECT_TIMEOUT_S  90
 
-/* Number of retry attempts before falling back to AP mode */
-#define WIFI_MAX_RETRIES        3
+/* STA reconnect attempts before AP+STA fallback (credentials kept in NVS) */
+#define WIFI_MAX_RETRIES        15
 
 /**
  * @brief WiFi manager states
@@ -167,6 +167,11 @@ esp_err_t wifi_manager_reset(void);
  * @return true if connected to WiFi, false otherwise
  */
 bool wifi_manager_is_connected(void);
+
+/**
+ * @brief Check if WiFi credentials are stored in NVS (even if not currently connected)
+ */
+bool wifi_manager_has_saved_credentials(void);
 
 /**
  * @brief Check if running in AP mode (setup mode)

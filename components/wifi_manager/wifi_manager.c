@@ -46,6 +46,11 @@ static char s_custom_device_name[DEVICE_NAME_MAX_LEN + 1] = {0};
 static bool s_use_encrypted_storage = true;
 static bool s_secure_storage_initialized = false;
 
+/* Connection retry state */
+static bool s_connect_in_progress = false;
+static bool s_ap_fallback_active = false;
+static int s_connect_retries = 0;
+
 /* Forward declarations */
 static esp_err_t wifi_init_nvs(void);
 static esp_err_t wifi_load_config(void);
@@ -61,6 +66,10 @@ static void wifi_apply_hostname(void);
 static bool wifi_is_valid_device_name(const char *name);
 static esp_err_t wifi_start_ap(void);
 static esp_err_t wifi_connect(void);
+static esp_err_t wifi_start_apsta_fallback(void);
+static void wifi_configure_ap_netif(esp_netif_t *ap_netif);
+static void wifi_fill_ap_config(wifi_config_t *wifi_config);
+static void wifi_fill_sta_config(wifi_config_t *wifi_config);
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data);
 
@@ -127,34 +136,37 @@ esp_err_t wifi_manager_init(void) {
         esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL);
         esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL);
         
+        s_connect_in_progress = true;
+        s_connect_retries = 0;
+        s_ap_fallback_active = false;
+        xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+
         // Try to connect
         ret = wifi_connect();
         if (ret != ESP_OK) {
-            ESP_LOGW(TAG, "Connection failed, will start AP mode");
-            esp_wifi_stop();
-            esp_wifi_deinit();
-            s_status.state = WIFI_STATE_AP_MODE;
-            return wifi_start_ap();
+            ESP_LOGW(TAG, "Connection failed, starting AP+STA fallback");
+            return wifi_start_apsta_fallback();
         }
-        
-        // Wait for connection with timeout
+
+        // Wait for connection with timeout (STA auto-retries on transient disconnects)
         EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
             WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
             pdFALSE,
             pdFALSE,
             pdMS_TO_TICKS(WIFI_CONNECT_TIMEOUT_S * 1000));
-        
+
+        s_connect_in_progress = false;
+
         if (bits & WIFI_CONNECTED_BIT) {
             ESP_LOGI(TAG, "Connected to WiFi");
             s_status.state = WIFI_STATE_CONNECTED;
             return ESP_OK;
-        } else {
-            ESP_LOGW(TAG, "Connection timeout, starting AP mode");
-            esp_wifi_stop();
-            esp_wifi_deinit();
-            s_status.state = WIFI_STATE_AP_MODE;
-            return wifi_start_ap();
         }
+
+        ESP_LOGW(TAG,
+                 "Connection timeout for %s — credentials kept in NVS, starting AP+STA fallback",
+                 s_wifi_config.ssid);
+        return wifi_start_apsta_fallback();
     } else {
         ESP_LOGI(TAG, "No saved WiFi config, starting AP mode");
         s_status.state = WIFI_STATE_AP_MODE;
@@ -416,67 +428,134 @@ static esp_err_t wifi_save_config(void) {
     return wifi_save_legacy_config();
 }
 
-static esp_err_t wifi_start_ap(void) {
-    ESP_LOGI(TAG, "Starting AP mode: %s", s_ap_name);
-    
-    // Initialize WiFi
-    esp_err_t ret = esp_wifi_init(&(wifi_init_config_t)WIFI_INIT_CONFIG_DEFAULT());
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "WiFi init failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    
-    // Register event handler
-    esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL);
-    
-    // Create AP interface
-    s_wifi_netif = esp_netif_create_default_wifi_ap();
-    wifi_apply_hostname();
-    
-    // Configure AP using ESP-IDF wifi_config_t
-    wifi_config_t wifi_config = {
-        .ap = {
-            .ssid_len = strlen(s_ap_name),
-            .channel = WIFI_AP_CHANNEL,
-            .max_connection = WIFI_AP_MAX_CONNECTIONS,
-            .authmode = WIFI_AUTH_OPEN,  // No password for AP
-        },
-    };
-    strncpy((char*)wifi_config.ap.ssid, s_ap_name, sizeof(wifi_config.ap.ssid) - 1);
-    
-    // Set IP address (192.168.4.1)
+static void wifi_fill_ap_config(wifi_config_t *wifi_config) {
+    memset(wifi_config, 0, sizeof(*wifi_config));
+    wifi_config->ap.ssid_len = strlen(s_ap_name);
+    wifi_config->ap.channel = WIFI_AP_CHANNEL;
+    wifi_config->ap.max_connection = WIFI_AP_MAX_CONNECTIONS;
+    wifi_config->ap.authmode = WIFI_AUTH_OPEN;
+    strncpy((char *)wifi_config->ap.ssid, s_ap_name, sizeof(wifi_config->ap.ssid) - 1);
+}
+
+static void wifi_fill_sta_config(wifi_config_t *wifi_config) {
+    memset(wifi_config, 0, sizeof(*wifi_config));
+    strncpy((char *)wifi_config->sta.ssid, s_wifi_config.ssid, sizeof(wifi_config->sta.ssid) - 1);
+    strncpy((char *)wifi_config->sta.password, s_wifi_config.password,
+            sizeof(wifi_config->sta.password) - 1);
+}
+
+static void wifi_configure_ap_netif(esp_netif_t *ap_netif) {
     esp_netif_ip_info_t ip_info = {
         .ip = {.addr = ESP_IP4TOADDR(192, 168, 4, 1)},
         .gw = {.addr = ESP_IP4TOADDR(192, 168, 4, 1)},
         .netmask = {.addr = ESP_IP4TOADDR(255, 255, 255, 0)},
     };
-    esp_netif_dhcps_stop(s_wifi_netif);
-    esp_netif_set_ip_info(s_wifi_netif, &ip_info);
-    esp_netif_dhcps_start(s_wifi_netif);
-    
-    // Start WiFi
-    ret = esp_wifi_set_mode(WIFI_MODE_AP);
+    esp_netif_dhcps_stop(ap_netif);
+    esp_netif_set_ip_info(ap_netif, &ip_info);
+    esp_netif_dhcps_start(ap_netif);
+}
+
+static esp_err_t wifi_start_apsta_fallback(void) {
+    ESP_LOGI(TAG, "AP+STA fallback for saved SSID %s (setup AP %s)",
+             s_wifi_config.ssid, s_ap_name);
+
+    s_ap_fallback_active = true;
+    s_connect_in_progress = true;
+    s_connect_retries = 0;
+    xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+
+    esp_err_t ret = esp_wifi_stop();
+    if (ret != ESP_OK && ret != ESP_ERR_WIFI_NOT_STARTED) {
+        ESP_LOGW(TAG, "WiFi stop before fallback: %s", esp_err_to_name(ret));
+    }
+
+    esp_netif_create_default_wifi_ap();
+    if (!s_wifi_netif) {
+        s_wifi_netif = esp_netif_create_default_wifi_sta();
+    }
+    wifi_apply_hostname();
+
+    wifi_config_t ap_config;
+    wifi_config_t sta_config;
+    wifi_fill_ap_config(&ap_config);
+    wifi_fill_sta_config(&sta_config);
+
+    ret = esp_wifi_set_mode(WIFI_MODE_APSTA);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Set mode failed: %s", esp_err_to_name(ret));
         return ret;
     }
-    
-    ret = esp_wifi_set_config(WIFI_IF_AP, &wifi_config);
+
+    ret = esp_wifi_set_config(WIFI_IF_AP, &ap_config);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Set config failed: %s", esp_err_to_name(ret));
         return ret;
     }
-    
+
+    ret = esp_wifi_set_config(WIFI_IF_STA, &sta_config);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
     ret = esp_wifi_start();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "WiFi start failed: %s", esp_err_to_name(ret));
         return ret;
     }
-    
+
+    esp_netif_t *ap_netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+    if (ap_netif) {
+        wifi_configure_ap_netif(ap_netif);
+    }
+
+    ret = esp_wifi_connect();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Initial STA connect in fallback failed: %s", esp_err_to_name(ret));
+    }
+
+    s_status.state = WIFI_STATE_AP_MODE;
+    strncpy(s_status.ip_address, "192.168.4.1", sizeof(s_status.ip_address) - 1);
+    ESP_LOGI(TAG,
+             "Setup AP active at http://192.168.4.1 — still retrying %s in background",
+             s_wifi_config.ssid);
+    return ESP_OK;
+}
+
+static esp_err_t wifi_start_ap(void) {
+    ESP_LOGI(TAG, "Starting AP mode: %s", s_ap_name);
+
+    esp_err_t ret = esp_wifi_init(&(wifi_init_config_t)WIFI_INIT_CONFIG_DEFAULT());
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL);
+    esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL);
+
+    s_wifi_netif = esp_netif_create_default_wifi_ap();
+    wifi_apply_hostname();
+    wifi_configure_ap_netif(s_wifi_netif);
+
+    wifi_config_t wifi_config;
+    wifi_fill_ap_config(&wifi_config);
+
+    ret = esp_wifi_set_mode(WIFI_MODE_AP);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = esp_wifi_set_config(WIFI_IF_AP, &wifi_config);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = esp_wifi_start();
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
     ESP_LOGI(TAG, "AP mode started. Connect to %s and open http://192.168.4.1", s_ap_name);
     s_status.state = WIFI_STATE_AP_MODE;
     strncpy(s_status.ip_address, "192.168.4.1", sizeof(s_status.ip_address) - 1);
-    
+
     return ESP_OK;
 }
 
@@ -518,11 +597,29 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
             case WIFI_EVENT_STA_START:
                 ESP_LOGI(TAG, "STA started");
                 break;
-            case WIFI_EVENT_STA_DISCONNECTED:
-                ESP_LOGI(TAG, "STA disconnected");
+            case WIFI_EVENT_STA_DISCONNECTED: {
+                wifi_event_sta_disconnected_t *disc =
+                    (wifi_event_sta_disconnected_t *)event_data;
+                ESP_LOGW(TAG, "STA disconnected (reason=%d)", disc ? disc->reason : -1);
                 s_status.state = WIFI_STATE_DISCONNECTED;
-                xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+
+                if (s_connect_in_progress && s_connect_retries < WIFI_MAX_RETRIES) {
+                    s_connect_retries++;
+                    ESP_LOGI(TAG, "Retrying WiFi (%d/%d)", s_connect_retries, WIFI_MAX_RETRIES);
+                    esp_wifi_connect();
+                    break;
+                }
+
+                if (s_connect_in_progress) {
+                    xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+                    break;
+                }
+
+                if (s_wifi_config.configured) {
+                    esp_wifi_connect();
+                }
                 break;
+            }
             case WIFI_EVENT_STA_CONNECTED:
                 ESP_LOGI(TAG, "STA connected to AP");
                 break;
@@ -540,10 +637,20 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                 break;
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-        ip_event_got_ip_t *event = (ip_event_got_ip_t*) event_data;
+        ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
-        snprintf(s_status.ip_address, sizeof(s_status.ip_address), IPSTR, IP2STR(&event->ip_info.ip));
+        snprintf(s_status.ip_address, sizeof(s_status.ip_address), IPSTR,
+                 IP2STR(&event->ip_info.ip));
         s_status.state = WIFI_STATE_CONNECTED;
+        s_connect_in_progress = false;
+        s_connect_retries = 0;
+
+        if (s_ap_fallback_active) {
+            ESP_LOGI(TAG, "Home WiFi connected — disabling setup AP");
+            esp_wifi_set_mode(WIFI_MODE_STA);
+            s_ap_fallback_active = false;
+        }
+
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
 }
@@ -622,6 +729,10 @@ esp_err_t wifi_manager_reset(void) {
 
 bool wifi_manager_is_connected(void) {
     return (s_status.state == WIFI_STATE_CONNECTED);
+}
+
+bool wifi_manager_has_saved_credentials(void) {
+    return s_wifi_config.configured;
 }
 
 bool wifi_manager_is_ap_mode(void) {
