@@ -3,25 +3,39 @@
 
 Pre-release (default): YYYY.WW.BUILD — full year, ISO week, CI build number.
 Release: set USE_BUILD_VERSION=0 for YYYY.WW.REVISION (manual revision).
+
+Local builds: fetch latest GitHub Actions run number when BUILD_NUMBER is unset,
+and append git SHA to version_full (e.g. 2026.29.37+bb8802f) for uniqueness.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HEADER_PATH = REPO_ROOT / "include" / "thermoflow_version.h"
 CMAKE_PATH = REPO_ROOT / "cmake" / "thermoflow_version.cmake"
+DEFAULT_GITHUB_REPO = "itoaa/ThermoFlow"
 
 
 def env_int(name: str, default: int) -> int:
     raw = os.environ.get(name, "").strip()
     if not raw:
         return default
+    return int(raw)
+
+
+def env_int_optional(name: str) -> int | None:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return None
     return int(raw)
 
 
@@ -55,6 +69,53 @@ def git_sha() -> str:
         return "unknown"
 
 
+def fetch_latest_github_run_number() -> int | None:
+    repo = env_str("GITHUB_REPOSITORY", DEFAULT_GITHUB_REPO)
+    url = f"https://api.github.com/repos/{repo}/actions/runs?per_page=1"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "ThermoFlow-version-generator",
+    }
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    request = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            payload = json.load(response)
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError):
+        return None
+
+    runs = payload.get("workflow_runs") or []
+    if not runs:
+        return None
+
+    run_number = runs[0].get("run_number")
+    if isinstance(run_number, int) and run_number > 0:
+        return run_number
+    return None
+
+
+def resolve_build_number() -> tuple[int, str]:
+    explicit = env_int_optional("BUILD_NUMBER")
+    if explicit is not None:
+        return explicit, "env"
+
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        run_number = env_int_optional("GITHUB_RUN_NUMBER")
+        if run_number is not None:
+            return run_number, "github_actions"
+        return 0, "github_actions_fallback"
+
+    if env_bool("FETCH_GITHUB_BUILD", True):
+        fetched = fetch_latest_github_run_number()
+        if fetched is not None:
+            return fetched, "github_api"
+
+    return 0, "local_fallback"
+
+
 def build_timestamp() -> datetime:
     epoch = os.environ.get("SOURCE_DATE_EPOCH", "").strip()
     if epoch.isdigit():
@@ -69,23 +130,28 @@ def main() -> int:
     year = env_int("VERSION_YEAR", iso_year)
     week = env_int("VERSION_WEEK", iso_week)
     revision = env_int("REVISION", 1)
-    build_number = env_int("BUILD_NUMBER", 0)
+    build_number, build_source = resolve_build_number()
     channel = env_str("CHANNEL", "dev")
     git = git_sha()
     use_build_version = env_bool("USE_BUILD_VERSION", True)
+    is_ci = os.environ.get("GITHUB_ACTIONS") == "true"
+    local_build = env_bool("LOCAL_BUILD", not is_ci)
 
     if use_build_version:
         version_scheme = "build"
         third = build_number
         version_string = f"{year}.{week}.{third}"
-        version_full = version_string
         release_calver = f"{year}.{week}.{revision}"
     else:
         version_scheme = "revision"
         third = revision
         version_string = f"{year}.{week}.{revision}"
-        version_full = version_string
         release_calver = version_string
+
+    if local_build and git != "unknown":
+        version_full = f"{version_string}+{git}"
+    else:
+        version_full = version_string
 
     header = f"""/**
  * @file thermoflow_version.h
@@ -130,7 +196,8 @@ set(THERMOFLOW_PROJECT_VER "{version_string}")
 
     print(
         f"Generated ThermoFlow version {version_full} "
-        f"(scheme={version_scheme}, channel={channel}, sha={git})"
+        f"(scheme={version_scheme}, build={build_number} via {build_source}, "
+        f"channel={channel}, sha={git})"
     )
     return 0
 

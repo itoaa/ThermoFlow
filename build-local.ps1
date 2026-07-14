@@ -7,15 +7,11 @@ $idfPath = "C:\Users\Ola Andersson\termoflow-test\esp-idf"
 Set-Location "C:\Users\Ola Andersson\termoflow-test\ThermoFlow-repo"
 $env:SDKCONFIG_DEFAULTS = "sdkconfig.ci.defaults"
 $env:CHANNEL = "dev"
-$env:BUILD_NUMBER = "0"
 $env:REVISION = "1"
 $env:USE_BUILD_VERSION = "1"
-
-try {
-    $env:GIT_SHA = (git rev-parse --short=7 HEAD 2>$null)
-} catch {
-    $env:GIT_SHA = "unknown"
-}
+$env:LOCAL_BUILD = "1"
+$env:FETCH_GITHUB_BUILD = "1"
+Remove-Item Env:BUILD_NUMBER -ErrorAction SilentlyContinue
 
 $pythonExe = Join-Path $env:IDF_PYTHON_ENV_PATH "Scripts\python.exe"
 if (-not (Test-Path $pythonExe)) {
