@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Stack overflow in `sys_evt` when logging from WiFi event handler — sinks now dispatch async
+- Reduced serial log noise (default serial level WARN); NVS persist throttled to WARN+ / audit
+
 ### Added
 - **log_manager** — unified multi-sink logging (serial, web, NVS, MQTT, SD stub)
 - Structured JSON v1 log entries with `boot_id`, `correlation_id`, category, component

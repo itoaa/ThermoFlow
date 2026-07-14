@@ -29,6 +29,8 @@ typedef struct {
     uint32_t count;
 } tf_log_nvs_meta_t;
 
+#define LOG_SINK_QUEUE_LEN 24
+
 typedef struct {
     bool initialized;
     tf_log_config_t config;
@@ -39,8 +41,11 @@ typedef struct {
     uint32_t sequence;
     uint32_t correlation_seq;
     uint32_t audit_filter_mask;
+    uint32_t nvs_writes_since_meta;
     tf_log_mqtt_publish_fn mqtt_publish;
     SemaphoreHandle_t mutex;
+    QueueHandle_t sink_queue;
+    TaskHandle_t dispatch_task;
 } log_state_t;
 
 static log_state_t s_log = {0};
@@ -216,12 +221,21 @@ static void sink_nvs(const tf_log_entry_t *entry)
     if (!(s_log.config.sinks & TF_LOG_SINK_NVS) || !s_log.config.nvs_persist) {
         return;
     }
+    /* Persist important events only — avoid flash wear from telemetry */
+    if (entry->level < TF_LOG_LEVEL_WARN && entry->audit_event < 0) {
+        return;
+    }
 
     uint32_t slot = entry->sequence % TF_LOG_NVS_CAPACITY;
     if (nvs_save_entry(slot, entry) != ESP_OK) {
         ESP_LOGW(TAG, "NVS log persist failed for seq %lu", (unsigned long)entry->sequence);
-    } else {
+        return;
+    }
+
+    s_log.nvs_writes_since_meta++;
+    if (s_log.nvs_writes_since_meta >= 5) {
         nvs_save_meta();
+        s_log.nvs_writes_since_meta = 0;
     }
 }
 
@@ -249,6 +263,26 @@ static void append_entry(const tf_log_entry_t *entry)
     s_log.stats.entries_in_buffer = s_log.count;
 }
 
+static void dispatch_sinks(const tf_log_entry_t *entry)
+{
+    sink_serial(entry);
+    sink_nvs(entry);
+    sink_mqtt(entry);
+    sink_sd_stub(entry);
+}
+
+static void log_dispatch_task(void *arg)
+{
+    (void)arg;
+    tf_log_entry_t entry;
+
+    while (true) {
+        if (xQueueReceive(s_log.sink_queue, &entry, portMAX_DELAY) == pdTRUE) {
+            dispatch_sinks(&entry);
+        }
+    }
+}
+
 static esp_err_t commit_entry(tf_log_entry_t *entry)
 {
     entry->checksum = checksum_entry(entry);
@@ -260,13 +294,13 @@ static esp_err_t commit_entry(tf_log_entry_t *entry)
         s_log.stats.first_entry_time_us = entry->timestamp_us;
     }
 
-    if (s_log.config.sinks & TF_LOG_SINK_WEB) {
-        /* web buffer is the in-memory ring */
+    /* Heavy sinks run on dedicated task — never block sys_evt / WiFi callbacks */
+    if (s_log.sink_queue) {
+        tf_log_entry_t copy = *entry;
+        if (xQueueSend(s_log.sink_queue, &copy, 0) != pdTRUE) {
+            ESP_LOGW(TAG, "Log sink queue full, dropping serial/NVS/MQTT dispatch");
+        }
     }
-    sink_serial(entry);
-    sink_nvs(entry);
-    sink_mqtt(entry);
-    sink_sd_stub(entry);
 
     return ESP_OK;
 }
@@ -377,7 +411,7 @@ esp_err_t log_manager_init(const tf_log_config_t *config)
     } else {
         s_log.config.sinks = TF_LOG_SINK_SERIAL | TF_LOG_SINK_WEB | TF_LOG_SINK_NVS;
         s_log.config.min_level = TF_LOG_LEVEL_INFO;
-        s_log.config.min_serial_level = TF_LOG_LEVEL_INFO;
+        s_log.config.min_serial_level = TF_LOG_LEVEL_WARN;
         s_log.config.serial_json = false;
         s_log.config.nvs_persist = true;
         s_log.config.capacity = TF_LOG_DEFAULT_CAPACITY;
@@ -397,6 +431,26 @@ esp_err_t log_manager_init(const tf_log_config_t *config)
     if (!s_log.mutex) {
         free(s_log.entries);
         s_log.entries = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+
+    s_log.sink_queue = xQueueCreate(LOG_SINK_QUEUE_LEN, sizeof(tf_log_entry_t));
+    if (!s_log.sink_queue) {
+        free(s_log.entries);
+        s_log.entries = NULL;
+        vSemaphoreDelete(s_log.mutex);
+        s_log.mutex = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+
+    if (xTaskCreate(log_dispatch_task, "log_dispatch", 4096, NULL, 3,
+                    &s_log.dispatch_task) != pdPASS) {
+        vQueueDelete(s_log.sink_queue);
+        s_log.sink_queue = NULL;
+        free(s_log.entries);
+        s_log.entries = NULL;
+        vSemaphoreDelete(s_log.mutex);
+        s_log.mutex = NULL;
         return ESP_ERR_NO_MEM;
     }
 
@@ -424,6 +478,15 @@ esp_err_t log_manager_deinit(void)
     }
 
     log_manager_write(TF_LOG_LEVEL_INFO, TF_LOG_CAT_SYSTEM, TAG, "Log manager shutting down");
+
+    if (s_log.dispatch_task) {
+        vTaskDelete(s_log.dispatch_task);
+        s_log.dispatch_task = NULL;
+    }
+    if (s_log.sink_queue) {
+        vQueueDelete(s_log.sink_queue);
+        s_log.sink_queue = NULL;
+    }
 
     xSemaphoreTake(s_log.mutex, portMAX_DELAY);
     vSemaphoreDelete(s_log.mutex);
