@@ -10,6 +10,7 @@ idf_component_register(
         json
         heat_recovery
         hardware_manager
+        sensor_manager
         esp_wifi
         security_utils
         rate_limiter

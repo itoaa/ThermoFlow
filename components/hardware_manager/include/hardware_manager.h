@@ -33,10 +33,20 @@ typedef enum {
     HW_COMPONENT_COUNT
 } hw_component_t;
 
+/**
+ * @brief Sensor data source preference
+ */
+typedef enum {
+    HW_DATA_SOURCE_AUTO = 0,       /**< Use real sensors when detected, else simulation */
+    HW_DATA_SOURCE_SIMULATION,     /**< Always use simulated sensor data */
+    HW_DATA_SOURCE_HARDWARE        /**< Always use real sensors (even if none detected) */
+} hw_data_source_t;
+
 /* Hardware detection status */
 typedef struct {
     bool detected[HW_COMPONENT_COUNT];
     bool simulation_mode;
+    hw_data_source_t data_source;
     uint32_t detection_time_ms;
     char detected_components_str[256];
 } hw_status_t;
@@ -73,6 +83,19 @@ bool hardware_is_simulation_mode(void);
  * @return ESP_OK on success
  */
 esp_err_t hardware_set_simulation_mode(bool enable);
+
+/**
+ * @brief Get configured sensor data source preference
+ */
+hw_data_source_t hardware_get_data_source(void);
+
+/**
+ * @brief Set sensor data source preference (persisted in NVS)
+ *
+ * @param source AUTO, SIMULATION, or HARDWARE
+ * @return ESP_OK on success
+ */
+esp_err_t hardware_set_data_source(hw_data_source_t source);
 
 /**
  * @brief Get full hardware status

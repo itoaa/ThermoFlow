@@ -30,6 +30,7 @@
 
 #include "heat_recovery.h"
 #include "hardware_manager.h"
+#include "sensor_manager.h"
 #include "thermoflow_config.h"
 #include "security_manager.h"
 #include "rate_limiter.h"
@@ -85,6 +86,8 @@ static esp_err_t device_name_handler(httpd_req_t *req);
 static esp_err_t device_restart_handler(httpd_req_t *req);
 static esp_err_t ota_status_handler(httpd_req_t *req);
 static esp_err_t hardware_info_handler(httpd_req_t *req);
+static esp_err_t hardware_mode_get_handler(httpd_req_t *req);
+static esp_err_t hardware_mode_set_handler(httpd_req_t *req);
 static esp_err_t cert_status_handler(httpd_req_t *req);
 static esp_err_t redirect_handler(httpd_req_t *req);
 
@@ -122,6 +125,36 @@ static const char *wifi_state_to_string(wifi_manager_state_t state)
         default:
             return "unknown";
     }
+}
+
+static const char *data_source_to_string(hw_data_source_t source)
+{
+    switch (source) {
+        case HW_DATA_SOURCE_AUTO: return "auto";
+        case HW_DATA_SOURCE_SIMULATION: return "simulation";
+        case HW_DATA_SOURCE_HARDWARE: return "hardware";
+        default: return "unknown";
+    }
+}
+
+static bool parse_data_source(const char *value, hw_data_source_t *out)
+{
+    if (!value || !out) {
+        return false;
+    }
+    if (strcmp(value, "auto") == 0) {
+        *out = HW_DATA_SOURCE_AUTO;
+        return true;
+    }
+    if (strcmp(value, "simulation") == 0) {
+        *out = HW_DATA_SOURCE_SIMULATION;
+        return true;
+    }
+    if (strcmp(value, "hardware") == 0) {
+        *out = HW_DATA_SOURCE_HARDWARE;
+        return true;
+    }
+    return false;
 }
 
 static const char *ota_state_to_string(ota_state_t state)
@@ -649,6 +682,22 @@ static void register_all_handlers(httpd_handle_t server)
         .user_ctx = NULL
     };
     httpd_register_uri_handler(server, &hardware_info_uri);
+
+    httpd_uri_t hardware_mode_get_uri = {
+        .uri = "/api/hardware/mode",
+        .method = HTTP_GET,
+        .handler = hardware_mode_get_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &hardware_mode_get_uri);
+
+    httpd_uri_t hardware_mode_set_uri = {
+        .uri = "/api/hardware/mode",
+        .method = HTTP_POST,
+        .handler = hardware_mode_set_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &hardware_mode_set_uri);
     
     // Certificate status endpoint
     httpd_uri_t cert_status_uri = {
@@ -1001,16 +1050,113 @@ static esp_err_t ftx_status_handler(httpd_req_t *req)
     return send_json_response(req, root);
 }
 
+static void add_hardware_mode_fields(cJSON *root)
+{
+    hw_data_source_t source = hardware_get_data_source();
+    bool sim = hardware_is_simulation_mode();
+    uint8_t sensor_count = hardware_get_sensor_count();
+
+    cJSON_AddStringToObject(root, "data_source", data_source_to_string(source));
+    cJSON_AddBoolToObject(root, "simulation_mode", sim);
+    cJSON_AddNumberToObject(root, "sensor_count", sensor_count);
+
+    if (sim && source == HW_DATA_SOURCE_SIMULATION) {
+        cJSON_AddStringToObject(root, "status", "SIMULATION - Forced by setting");
+    } else if (sim) {
+        cJSON_AddStringToObject(root, "status", "SIMULATION - No sensors detected");
+    } else if (sensor_count == 0) {
+        cJSON_AddStringToObject(root, "status", "HARDWARE - No sensors detected");
+    } else {
+        cJSON_AddStringToObject(root, "status", "HARDWARE - Sensors connected");
+    }
+}
+
+// GET /api/hardware/mode - Sensor data source preference
+static esp_err_t hardware_mode_get_handler(httpd_req_t *req)
+{
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
+    add_security_headers(req);
+
+    cJSON *root = cJSON_CreateObject();
+    add_hardware_mode_fields(root);
+    return send_json_response(req, root);
+}
+
+// POST /api/hardware/mode - Set sensor data source preference
+static esp_err_t hardware_mode_set_handler(httpd_req_t *req)
+{
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
+    add_security_headers(req);
+
+    char buf[128];
+    int ret, remaining = req->content_len;
+
+    if (remaining > (int)sizeof(buf) - 1) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Content too long");
+        return ESP_FAIL;
+    }
+
+    int received = 0;
+    while (remaining > 0) {
+        ret = httpd_req_recv(req, buf + received, remaining);
+        if (ret <= 0) {
+            if (ret == HTTPD_SOCK_ERR_TIMEOUT) continue;
+            return ESP_FAIL;
+        }
+        received += ret;
+        remaining -= ret;
+    }
+    buf[received] = '\0';
+
+    cJSON *json = cJSON_Parse(buf);
+    if (!json) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    cJSON *source_item = cJSON_GetObjectItem(json, "data_source");
+    if (!source_item || !cJSON_IsString(source_item)) {
+        cJSON_Delete(json);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing data_source");
+        return ESP_FAIL;
+    }
+
+    hw_data_source_t source = HW_DATA_SOURCE_AUTO;
+    if (!parse_data_source(source_item->valuestring, &source)) {
+        cJSON_Delete(json);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid data_source");
+        return ESP_FAIL;
+    }
+    cJSON_Delete(json);
+
+    esp_err_t set_ret = hardware_set_data_source(source);
+    if (set_ret != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to save setting");
+        return ESP_FAIL;
+    }
+
+    sensor_manager_refresh_mode();
+
+    audit_log_event(AUDIT_EVENT_CONFIG_CHANGE, AUDIT_SEVERITY_INFO,
+                    "Sensor data source set to %s", data_source_to_string(source));
+
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "success", true);
+    add_hardware_mode_fields(response);
+    return send_json_response(req, response);
+}
+
 // GET /api/hardware - Hardware detection status and pin info
 static esp_err_t hardware_info_handler(httpd_req_t *req)
 {
     add_security_headers(req);
     
     cJSON *root = cJSON_CreateObject();
-    
-    cJSON_AddBoolToObject(root, "simulation_mode", hardware_is_simulation_mode());
-    cJSON_AddStringToObject(root, "status", hardware_is_simulation_mode() ? 
-        "SIMULATION - No hardware detected" : "HARDWARE - Sensors connected");
+    add_hardware_mode_fields(root);
     
     // Detected components
     cJSON *detected = cJSON_CreateObject();
@@ -1024,7 +1170,6 @@ static esp_err_t hardware_info_handler(httpd_req_t *req)
     cJSON_AddItemToObject(root, "detected", detected);
     
     // Counts
-    cJSON_AddNumberToObject(root, "sensor_count", hardware_get_sensor_count());
     cJSON_AddNumberToObject(root, "fan_count", hardware_get_fan_count());
     
     // Pin configuration

@@ -1,7 +1,7 @@
 idf_component_register(
     SRCS "hardware_manager.c"
     INCLUDE_DIRS "include"
-    REQUIRES driver esp_timer
+    REQUIRES driver esp_timer nvs_flash
 )
 
 # Add global include directory for thermoflow_config.h

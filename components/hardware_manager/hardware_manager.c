@@ -19,12 +19,18 @@
 
 #include "hardware_manager.h"
 #include "thermoflow_config.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 
 static const char *TAG = "HW_MANAGER";
+
+#define HW_NVS_NAMESPACE      "device_config"
+#define HW_NVS_KEY_DATA_SOURCE "data_source"
 
 /* Internal state */
 static hw_status_t g_hw_status = {0};
 static SemaphoreHandle_t g_hw_mutex = NULL;
+static hw_data_source_t s_data_source = HW_DATA_SOURCE_AUTO;
 
 /* SHT40 detection constants */
 #define SHT40_CMD_SOFT_RESET    0x94
@@ -158,6 +164,58 @@ static esp_err_t init_i2c_master(void)
     return ESP_OK;
 }
 
+static esp_err_t load_data_source_preference(void)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(HW_NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    uint8_t value = HW_DATA_SOURCE_AUTO;
+    ret = nvs_get_u8(nvs_handle, HW_NVS_KEY_DATA_SOURCE, &value);
+    nvs_close(nvs_handle);
+
+    if (ret == ESP_OK && value <= HW_DATA_SOURCE_HARDWARE) {
+        s_data_source = (hw_data_source_t)value;
+        ESP_LOGI(TAG, "Loaded data source preference: %d", value);
+    }
+    return ret;
+}
+
+static esp_err_t save_data_source_preference(hw_data_source_t source)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(HW_NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = nvs_set_u8(nvs_handle, HW_NVS_KEY_DATA_SOURCE, (uint8_t)source);
+    if (ret == ESP_OK) {
+        ret = nvs_commit(nvs_handle);
+    }
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+static void apply_data_source_preference(uint8_t sensor_count)
+{
+    switch (s_data_source) {
+        case HW_DATA_SOURCE_SIMULATION:
+            g_hw_status.simulation_mode = true;
+            break;
+        case HW_DATA_SOURCE_HARDWARE:
+            g_hw_status.simulation_mode = false;
+            break;
+        case HW_DATA_SOURCE_AUTO:
+        default:
+            g_hw_status.simulation_mode = (sensor_count == 0);
+            break;
+    }
+    g_hw_status.data_source = s_data_source;
+}
+
 /* Generate simulation data */
 static void generate_simulation_summary(void)
 {
@@ -172,6 +230,12 @@ static void generate_detection_summary(void)
     size_t remaining = sizeof(g_hw_status.detected_components_str);
     int written = 0;
     
+    if (g_hw_status.simulation_mode && s_data_source == HW_DATA_SOURCE_SIMULATION) {
+        snprintf(g_hw_status.detected_components_str, sizeof(g_hw_status.detected_components_str),
+                 "[SIMULATION MODE] Forced by user setting");
+        return;
+    }
+
     if (g_hw_status.simulation_mode) {
         generate_simulation_summary();
         return;
@@ -253,40 +317,46 @@ esp_err_t hardware_manager_init(void)
     
     /* Clear status */
     memset(&g_hw_status, 0, sizeof(g_hw_status));
+    load_data_source_preference();
     
     /* Initialize I2C for detection */
     esp_err_t ret = init_i2c_master();
+    uint8_t sensor_count = 0;
     if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "I2C init failed - proceeding in simulation mode");
-        g_hw_status.simulation_mode = true;
+        ESP_LOGW(TAG, "I2C init failed - hardware detection skipped");
         goto detection_complete;
     }
     
     /* Detect sensors */
-    uint8_t sensor_count = detect_sht40_sensors();
+    sensor_count = detect_sht40_sensors();
     
     /* Detect display */
     g_hw_status.detected[HW_COMPONENT_OLED_DISPLAY] = detect_oled_display();
     
     /* Detect fans */
-    uint8_t fan_count = detect_fans();
+    detect_fans();
     
-    /* Determine if simulation mode is needed */
     if (sensor_count == 0) {
         ESP_LOGW(TAG, "============================================");
         ESP_LOGW(TAG, "  NO SENSORS DETECTED!");
-        ESP_LOGW(TAG, "  Entering SIMULATION MODE");
         ESP_LOGW(TAG, "  Connect SHT40 sensors to GPIO %d/%d",
                  I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO);
-        ESP_LOGW(TAG, "  and reboot to use real hardware.");
         ESP_LOGW(TAG, "============================================");
-        g_hw_status.simulation_mode = true;
     } else {
         ESP_LOGI(TAG, "Detected %d SHT40 sensor(s)", sensor_count);
-        g_hw_status.simulation_mode = false;
     }
     
 detection_complete:
+    apply_data_source_preference(sensor_count);
+
+    if (g_hw_status.simulation_mode) {
+        ESP_LOGI(TAG, "Sensor data source: %s (preference=%d)",
+                 s_data_source == HW_DATA_SOURCE_SIMULATION ? "SIMULATION (forced)" :
+                 sensor_count == 0 ? "SIMULATION (auto)" : "SIMULATION",
+                 s_data_source);
+    } else {
+        ESP_LOGI(TAG, "Sensor data source: HARDWARE (preference=%d)", s_data_source);
+    }
     g_hw_status.detection_time_ms = esp_timer_get_time() / 1000;
     generate_detection_summary();
     
@@ -325,22 +395,50 @@ bool hardware_is_simulation_mode(void)
 
 esp_err_t hardware_set_simulation_mode(bool enable)
 {
+    return hardware_set_data_source(enable ? HW_DATA_SOURCE_SIMULATION : HW_DATA_SOURCE_HARDWARE);
+}
+
+hw_data_source_t hardware_get_data_source(void)
+{
+    hw_data_source_t source = HW_DATA_SOURCE_AUTO;
+    if (xSemaphoreTake(g_hw_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        source = s_data_source;
+        xSemaphoreGive(g_hw_mutex);
+    }
+    return source;
+}
+
+esp_err_t hardware_set_data_source(hw_data_source_t source)
+{
+    if (source > HW_DATA_SOURCE_HARDWARE) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
     if (xSemaphoreTake(g_hw_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
         return ESP_ERR_TIMEOUT;
     }
-    
-    g_hw_status.simulation_mode = enable;
-    
-    if (enable) {
-        /* Clear all hardware flags when entering simulation */
-        memset(g_hw_status.detected, 0, sizeof(g_hw_status.detected));
+
+    s_data_source = source;
+    uint8_t sensor_count = 0;
+    for (int i = HW_COMPONENT_SHT40_SENSOR_1; i <= HW_COMPONENT_SHT40_SENSOR_4; i++) {
+        if (g_hw_status.detected[i]) {
+            sensor_count++;
+        }
     }
-    
+
+    apply_data_source_preference(sensor_count);
     generate_detection_summary();
-    
+
     xSemaphoreGive(g_hw_mutex);
-    
-    ESP_LOGI(TAG, "Simulation mode %s", enable ? "ENABLED" : "DISABLED");
+
+    esp_err_t ret = save_data_source_preference(source);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to persist data source: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    ESP_LOGI(TAG, "Data source set to %d (simulation=%s)",
+             source, g_hw_status.simulation_mode ? "yes" : "no");
     return ESP_OK;
 }
 
@@ -381,9 +479,7 @@ esp_err_t hardware_redetect(void)
     g_hw_status.detected[HW_COMPONENT_OLED_DISPLAY] = detect_oled_display();
     detect_fans();
     
-    /* Update simulation mode */
-    g_hw_status.simulation_mode = (sensor_count == 0);
-    
+    apply_data_source_preference(sensor_count);
     generate_detection_summary();
     g_hw_status.detection_time_ms = esp_timer_get_time() / 1000;
     

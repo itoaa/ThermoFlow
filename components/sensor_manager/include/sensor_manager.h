@@ -98,6 +98,13 @@ esp_err_t sensor_manager_get_data(sensor_manager_data_t *data);
 bool sensor_manager_is_simulation_mode(void);
 
 /**
+ * @brief Re-apply simulation/hardware mode after user changes data source
+ *
+ * @return ESP_OK on success
+ */
+esp_err_t sensor_manager_refresh_mode(void);
+
+/**
  * @brief Get average temperature from all valid sensors
  * 
  * @return Average temperature in Celsius, or 0.0 if no valid sensors

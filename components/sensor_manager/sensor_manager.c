@@ -101,6 +101,11 @@ static esp_err_t init_hardware_sensors(void)
     }
 
     if (s_active_sensor_count == 0) {
+        if (hardware_get_data_source() == HW_DATA_SOURCE_HARDWARE) {
+            ESP_LOGW(TAG, "No SHT40 sensors initialized — hardware mode forced");
+            s_simulation_mode = false;
+            return ESP_ERR_NOT_FOUND;
+        }
         ESP_LOGW(TAG, "No SHT40 sensors initialized — falling back to simulation");
         s_simulation_mode = true;
         return ESP_ERR_NOT_FOUND;
@@ -205,6 +210,32 @@ esp_err_t sensor_manager_get_data(sensor_manager_data_t *data)
 bool sensor_manager_is_simulation_mode(void)
 {
     return s_simulation_mode;
+}
+
+esp_err_t sensor_manager_refresh_mode(void)
+{
+    bool target_sim = hardware_is_simulation_mode();
+    if (target_sim == s_simulation_mode) {
+        return ESP_OK;
+    }
+
+    sensor_manager_deinit();
+    s_simulation_mode = target_sim;
+    memset(&s_last_data, 0, sizeof(s_last_data));
+
+    if (s_simulation_mode) {
+        ESP_LOGI(TAG, "Switched to simulation mode");
+        return ESP_OK;
+    }
+
+    esp_err_t ret = init_hardware_sensors();
+    if (ret != ESP_OK && hardware_get_data_source() != HW_DATA_SOURCE_HARDWARE) {
+        ESP_LOGW(TAG, "Hardware sensor init failed, staying in simulation");
+        s_simulation_mode = true;
+    }
+
+    ESP_LOGI(TAG, "Switched to hardware sensor mode");
+    return ESP_OK;
 }
 
 float sensor_manager_get_avg_temperature(void)

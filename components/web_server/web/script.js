@@ -192,7 +192,8 @@ async function fetchAll() {
         fetchSensors(),
         fetchFTX(),
         fetchDeviceInfo(),
-        fetchOtaStatus()
+        fetchOtaStatus(),
+        fetchHardwareMode()
     ]);
     
     state.connected = true;
@@ -346,6 +347,48 @@ async function fetchDeviceInfo() {
     if (nameInput && document.activeElement !== nameInput) {
         nameInput.placeholder = data.default_name || 'ThermoFlow-XXXX';
     }
+}
+
+const dataSourceLabels = {
+    auto: 'Automatiskt',
+    simulation: 'Simulering',
+    hardware: 'Riktiga sensorer'
+};
+
+const sensorStatusLabels = {
+    'SIMULATION - Forced by setting': 'Simulering (tvingat läge)',
+    'SIMULATION - No sensors detected': 'Simulering (inga sensorer)',
+    'HARDWARE - No sensors detected': 'Sensorer (inga hittade)',
+    'HARDWARE - Sensors connected': 'Riktiga sensorer'
+};
+
+async function fetchHardwareMode() {
+    const data = await fetchAPI('/hardware/mode');
+    if (!data) return;
+
+    const statusEl = document.getElementById('sensor-mode-status');
+    const countEl = document.getElementById('sensor-count');
+    const hintEl = document.getElementById('sensor-mode-hint');
+
+    if (statusEl) {
+        statusEl.textContent = sensorStatusLabels[data.status] || data.status || '--';
+    }
+    if (countEl) {
+        countEl.textContent = data.sensor_count ?? '--';
+    }
+    if (hintEl) {
+        if (data.data_source === 'simulation') {
+            hintEl.textContent = 'Simulerad sensordata används oavsett om sensorer är anslutna.';
+        } else if (data.data_source === 'hardware') {
+            hintEl.textContent = 'Endast riktiga sensorer används. Utan sensorer blir avläsningarna ogiltiga.';
+        } else {
+            hintEl.textContent = 'Auto använder riktiga sensorer om de finns, annars simulerad data.';
+        }
+    }
+
+    document.querySelectorAll('#data-source-control .segment').forEach(segment => {
+        segment.classList.toggle('active', segment.dataset.source === data.data_source);
+    });
 }
 
 async function fetchOtaStatus() {
@@ -578,6 +621,27 @@ function setupSettings() {
         });
     }
     
+    // Sensor data source
+    document.querySelectorAll('#data-source-control .segment').forEach(segment => {
+        segment.addEventListener('click', async () => {
+            const source = segment.dataset.source;
+            const response = await fetchAPI('/hardware/mode', {
+                method: 'POST',
+                body: JSON.stringify({ data_source: source })
+            });
+
+            if (response?.success) {
+                document.querySelectorAll('#data-source-control .segment').forEach(s => {
+                    s.classList.toggle('active', s.dataset.source === source);
+                });
+                await fetchHardwareMode();
+                showToast(`Datakälla: ${dataSourceLabels[source] || source}`, 'success');
+            } else {
+                showToast('Kunde inte ändra datakälla', 'error');
+            }
+        });
+    });
+
     // Device name editing
     const nameForm = document.getElementById('device-name-form');
     const nameInput = document.getElementById('device-name-input');
