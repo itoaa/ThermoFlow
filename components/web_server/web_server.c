@@ -34,6 +34,7 @@
 #include "security_manager.h"
 #include "rate_limiter.h"
 #include "audit_log.h"
+#include "web_static.h"
 
 static const char *TAG = "WEB_SERVER";
 
@@ -641,7 +642,7 @@ esp_err_t web_server_start(void)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = 80;
     config.lru_purge_enable = true;
-    config.max_uri_handlers = 20;
+    config.max_uri_handlers = 32;
     
     esp_err_t err = httpd_start(&http_server, &config);
     if (err != ESP_OK) {
@@ -650,6 +651,12 @@ esp_err_t web_server_start(void)
     }
     
     register_all_handlers(http_server);
+    err = web_static_register_handlers(http_server);
+    if (err != ESP_OK) {
+        httpd_stop(http_server);
+        http_server = NULL;
+        return err;
+    }
     
     ESP_LOGI(TAG, "HTTP server started on port 80");
     return ESP_OK;

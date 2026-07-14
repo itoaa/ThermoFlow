@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "web_server.c"
+    SRCS "web_server.c" "web_static.c"
     INCLUDE_DIRS "include"
     REQUIRES 
         freertos
@@ -14,6 +14,17 @@ idf_component_register(
         security_utils
         rate_limiter
         audit_log
+        wifi_manager
+    EMBED_FILES
+        "web/index.html"
+        "web/wifi_config.html"
+        "web/style.css"
+        "web/script.js"
+        "web/ftx.html"
+        "web/ftx-style.css"
+        "web/ftx-script.js"
+        "web/manifest.json"
+        "web/sw.js"
 )
 
 # Add global include directory for thermoflow_config.h
