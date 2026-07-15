@@ -17,13 +17,16 @@
 #include "thermoflow_version.h"
 
 /**
- * @brief Operating mode affects fan behaviour at high humidity (SR-010)
+ * @brief Application operating mode (see docs/APPLICATION_MODES.md)
+ *
+ * Affects UI, sensor roles, and whether PWM/IR/electrical control is active.
+ * SR-010 humidity policy depends on mode when control is enabled.
  */
 typedef enum {
-    TF_MODE_AC_MONITOR = 0,      /**< Mobile AC — monitor cold/hot air, fans unchanged */
-    TF_MODE_HEAT_EXCHANGER,      /**< DIY heat exchanger — temp-based fan control */
-    TF_MODE_MINI_FTX,            /**< Mini-FTX — ventilation with heat recovery */
-    TF_MODE_SENSOR_ONLY,         /**< Temperature/RH logging only, no fan control */
+    TF_MODE_AC_MONITOR = 0,      /**< Mobil AC — cold/hot side monitor; optional IR/el */
+    TF_MODE_HEAT_EXCHANGER,      /**< Värmeväxlare — dual continuous fans in/out */
+    TF_MODE_MINI_FTX,            /**< Mini-FTX — regenerative ceramic, alternating flow */
+    TF_MODE_SENSOR_ONLY,         /**< Sensors/logging only, no actuators */
     TF_MODE_COUNT
 } thermoflow_mode_t;
 

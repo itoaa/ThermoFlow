@@ -181,13 +181,212 @@
             </div>
         </div>
 
-        <!-- FTX View -->
+        <!-- Mode control view (FTX / HX / AC) -->
         <div id="view-ftx" class="view">
             <header class="page-header">
                 <h1 id="ftx-title">FTX-system</h1>
                 <p class="subtitle" id="ftx-subtitle">Frånluftsventilation med värmeåtervinning</p>
             </header>
-            
+
+            <!-- ===== Mobil AC panel ===== -->
+            <div id="mode-panel-ac" class="profile-hidden">
+                <div class="subtab-bar" id="ac-subtabs">
+                    <button type="button" class="subtab active" data-ac-tab="monitor">Överblick</button>
+                    <button type="button" class="subtab" data-ac-tab="control" id="ac-subtab-control">Styrning</button>
+                </div>
+
+                <div id="ac-tab-monitor" class="ac-tab-panel">
+                    <div class="ac-diagram glass-card">
+                        <div class="ac-unit-visual">
+                            <div class="ac-side cold">
+                                <span class="ac-side-label">Kylsida <button type="button" class="help-tip" data-help="ac.cold_side" aria-label="Hjälp">?</button></span>
+                                <div class="ac-temp" id="ac-cold-temp">--°C</div>
+                                <div class="ac-rh" id="ac-cold-rh">--% RH</div>
+                                <span class="ac-caption">Kylutblås</span>
+                            </div>
+                            <div class="ac-core">
+                                <i class="fas fa-snowflake"></i>
+                                <span>Portabel AC</span>
+                                <div class="efficiency-badge" id="ac-cooling-index">--</div>
+                                <span class="ac-caption">Kylindex</span>
+                            </div>
+                            <div class="ac-side hot">
+                                <span class="ac-side-label">Varmsida <button type="button" class="help-tip" data-help="ac.hot_side" aria-label="Hjälp">?</button></span>
+                                <div class="ac-temp" id="ac-hot-temp">--°C</div>
+                                <div class="ac-rh" id="ac-hot-rh">--% RH</div>
+                                <span class="ac-caption">Kondensorutblås</span>
+                            </div>
+                        </div>
+                        <div class="ac-room-bar">
+                            <span>Rumsluft <button type="button" class="help-tip" data-help="ac.room" aria-label="Hjälp">?</button></span>
+                            <strong id="ac-room-temp">--°C</strong>
+                            <span id="ac-room-rh">--% RH</span>
+                        </div>
+                    </div>
+
+                    <div class="metrics-grid" id="ac-metrics-grid">
+                        <div class="metric-card glass-card">
+                            <div class="metric-head">
+                                <span>Kyllyft</span>
+                                <button type="button" class="help-tip" data-help="ac.cooling_delta" aria-label="Hjälp">?</button>
+                            </div>
+                            <div class="metric-value" id="ac-metric-cooling-delta">--</div>
+                            <div class="metric-unit">°C kallare än rum</div>
+                        </div>
+                        <div class="metric-card glass-card">
+                            <div class="metric-head">
+                                <span>Värmeavgivning</span>
+                                <button type="button" class="help-tip" data-help="ac.heat_reject" aria-label="Hjälp">?</button>
+                            </div>
+                            <div class="metric-value" id="ac-metric-heat-reject">--</div>
+                            <div class="metric-unit">°C varmare än rum</div>
+                        </div>
+                        <div class="metric-card glass-card">
+                            <div class="metric-head">
+                                <span>Sidobalans</span>
+                                <button type="button" class="help-tip" data-help="ac.side_balance" aria-label="Hjälp">?</button>
+                            </div>
+                            <div class="metric-value" id="ac-metric-balance">--</div>
+                            <div class="metric-unit">varm ΔT / kyl ΔT</div>
+                        </div>
+                        <div class="metric-card glass-card">
+                            <div class="metric-head">
+                                <span>Kondensrisk</span>
+                                <button type="button" class="help-tip" data-help="ac.cond_risk" aria-label="Hjälp">?</button>
+                            </div>
+                            <div class="metric-value" id="ac-metric-cond-risk">--</div>
+                            <div class="metric-unit" id="ac-metric-cond-detail">baserat på RH och T</div>
+                        </div>
+                        <div class="metric-card glass-card">
+                            <div class="metric-head">
+                                <span>Kylindex</span>
+                                <button type="button" class="help-tip" data-help="ac.cooling_index" aria-label="Hjälp">?</button>
+                            </div>
+                            <div class="metric-value" id="ac-metric-index">--</div>
+                            <div class="metric-unit">0–100 just nu</div>
+                            <div class="metric-bar"><div class="metric-bar-fill" id="ac-index-bar"></div></div>
+                        </div>
+                        <div class="metric-card glass-card">
+                            <div class="metric-head">
+                                <span>Fukt i kylutblås</span>
+                                <button type="button" class="help-tip" data-help="ac.cold_rh" aria-label="Hjälp">?</button>
+                            </div>
+                            <div class="metric-value" id="ac-metric-cold-rh">--</div>
+                            <div class="metric-unit">% RH</div>
+                        </div>
+                    </div>
+                    <p class="ota-hint" style="margin-top:12px;">
+                        Definitioner och monteringstips finns i
+                        <a href="#" class="doc-link" data-doc="MOBILE_AC">dokumentationen för Mobil AC</a>.
+                    </p>
+                </div>
+
+                <div id="ac-tab-control" class="ac-tab-panel profile-hidden">
+                    <p class="ota-hint" id="ac-control-modules-hint" style="margin-bottom:12px;">
+                        Tillval aktiveras under <strong>Inställningar → Mobil AC</strong>. Här styrs driftpolicy och aktuatorer.
+                    </p>
+
+                    <!-- Live status strip -->
+                    <div class="glass-card ac-status-strip">
+                        <div class="ac-status-item">
+                            <span class="ac-status-label">Reglerläge <button type="button" class="help-tip" data-help="ac.run_mode" aria-label="Hjälp">?</button></span>
+                            <strong id="ac-status-run-mode">—</strong>
+                        </div>
+                        <div class="ac-status-item">
+                            <span class="ac-status-label">Kondensrisk <button type="button" class="help-tip" data-help="ac.cond_risk" aria-label="Hjälp">?</button></span>
+                            <strong id="ac-status-cond-risk">—</strong>
+                        </div>
+                        <div class="ac-status-item">
+                            <span class="ac-status-label">Policy vid risk <button type="button" class="help-tip" data-help="ac.cond_action" aria-label="Hjälp">?</button></span>
+                            <strong id="ac-status-cond-action">—</strong>
+                        </div>
+                        <div class="ac-status-item">
+                            <span class="ac-status-label">Kylindex <button type="button" class="help-tip" data-help="ac.cooling_index" aria-label="Hjälp">?</button></span>
+                            <strong id="ac-status-cooling-index">—</strong>
+                        </div>
+                    </div>
+
+                    <!-- Policy -->
+                    <div class="ftx-controls" style="margin-top:1rem;">
+                        <div class="glass-card">
+                            <h3><i class="fas fa-sliders-h"></i> Driftpolicy
+                                <button type="button" class="help-tip" data-help="ac.policy" aria-label="Hjälp">?</button>
+                            </h3>
+                            <p class="ota-hint">Välj hur hjälpfläktar och fjärrkommandon beter sig vid normal drift och vid kondensrisk.</p>
+                            <div class="setting-item">
+                                <label>Fläktreglering</label>
+                                <div class="mode-toggle" id="ac-run-mode-toggle">
+                                    <button type="button" class="btn-toggle" data-ac-run="manual">Manuell</button>
+                                    <button type="button" class="btn-toggle active" data-ac-run="auto">Automatisk</button>
+                                </div>
+                            </div>
+                            <div class="setting-item">
+                                <label for="ac-cond-action">Vid kondensrisk
+                                    <button type="button" class="help-tip" data-help="ac.cond_action" aria-label="Hjälp">?</button>
+                                </label>
+                                <select id="ac-cond-action" class="input-sm">
+                                    <option value="observe">Endast övervaka (larm/logg)</option>
+                                    <option value="boost_assist">Förstärk hjälpfläktar</option>
+                                    <option value="request_fan_only">Begär fläktläge på AC (IR/linje)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Assist fans -->
+                        <div class="glass-card profile-hidden" id="ac-assist-fans-panel">
+                            <h3><i class="fas fa-fan"></i> Hjälpfläktar
+                                <button type="button" class="help-tip" data-help="ac.assist_live" aria-label="Hjälp">?</button>
+                            </h3>
+                            <p class="ota-hint">PWM-signal (börvärde) och uppmätt varvtal om tachometer (4-pin) är inkopplad.</p>
+                            <div class="fan-live-grid">
+                                <div class="fan-live-card" id="ac-fan1-live">
+                                    <div class="fan-live-title">Fläkt 1 (kall/avluft-stöd)</div>
+                                    <div class="fan-live-row"><span>Börvärde</span><strong id="ac-fan1-setpoint">—%</strong></div>
+                                    <div class="fan-live-row"><span>RPM</span><strong id="ac-fan1-rpm">—</strong></div>
+                                    <div class="fan-live-row"><span>Status</span><strong id="ac-fan1-fault">—</strong></div>
+                                    <div class="fan-control ac-manual-only">
+                                        <label>Manuell hastighet</label>
+                                        <div class="slider-container">
+                                            <input type="range" class="modern-slider" id="ac-assist-fan1" min="0" max="100" value="0">
+                                            <span class="slider-value" id="ac-assist-fan1-value">0%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="fan-live-card" id="ac-fan2-live">
+                                    <div class="fan-live-title">Fläkt 2 (varm/avluft-stöd)</div>
+                                    <div class="fan-live-row"><span>Börvärde</span><strong id="ac-fan2-setpoint">—%</strong></div>
+                                    <div class="fan-live-row"><span>RPM</span><strong id="ac-fan2-rpm">—</strong></div>
+                                    <div class="fan-live-row"><span>Status</span><strong id="ac-fan2-fault">—</strong></div>
+                                    <div class="fan-control ac-manual-only">
+                                        <label>Manuell hastighet</label>
+                                        <div class="slider-container">
+                                            <input type="range" class="modern-slider" id="ac-assist-fan2" min="0" max="100" value="0">
+                                            <span class="slider-value" id="ac-assist-fan2-value">0%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- IR / line -->
+                        <div class="glass-card profile-hidden" id="ac-ir-line-panel">
+                            <h3><i class="fas fa-satellite-dish"></i> Fjärrkommando
+                                <button type="button" class="help-tip" data-help="ac.remote_cmd" aria-label="Hjälp">?</button>
+                            </h3>
+                            <p class="ota-hint">Skickas via IR-fjärr och/eller linjestyrning när hårdvara finns. Tills dess sparas avsikt i logg.</p>
+                            <div class="device-name-actions">
+                                <button class="btn-sm btn-primary" id="ac-cmd-power" type="button">Ström växla</button>
+                                <button class="btn-sm" id="ac-cmd-cool" type="button">Kylläge</button>
+                                <button class="btn-sm" id="ac-cmd-fan" type="button">Fläktläge</button>
+                            </div>
+                            <p class="ota-hint" id="ac-last-command">Senaste kommando: —</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== Generic FTX / HX panel ===== -->
+            <div id="mode-panel-generic">
             <div class="ftx-diagram profile-ftx-only">
                 <div class="ftx-flow">
                     <div class="flow-section outdoor">
@@ -229,25 +428,46 @@
 
             <div class="ftx-controls">
                 <div class="glass-card">
-                    <h3>Fläktstyrning</h3>
-                    <div class="fan-control">
-                        <label>Tilluftsfläkt</label>
+                    <h3><i class="fas fa-power-off"></i> Styrning</h3>
+                    <p class="ota-hint" id="control-mode-hint">Aktivera för att låta enheten styra fläktar eller AC.</p>
+                    <div class="setting-item" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                        <label for="control-enabled">Styrning aktiv</label>
+                        <label class="switch">
+                            <input type="checkbox" id="control-enabled">
+                            <span class="slider-round"></span>
+                        </label>
+                    </div>
+                    <div class="mode-toggle" id="fan-mode-toggle">
+                        <button class="btn-toggle" data-mode="off">Av</button>
+                        <button class="btn-toggle active" data-mode="auto">Auto</button>
+                        <button class="btn-toggle" data-mode="manual">Manuell</button>
+                    </div>
+                </div>
+
+                <div class="glass-card profile-pwm-fans">
+                    <h3><i class="fas fa-fan"></i> Fläktar</h3>
+                    <div class="fan-control" id="fan1-control">
+                        <label id="fan1-label">Tilluftsfläkt</label>
                         <div class="slider-container">
                             <input type="range" class="modern-slider" id="supply-fan" min="0" max="100" value="0">
                             <span class="slider-value" id="supply-fan-value">0%</span>
                         </div>
                     </div>
-                    <div class="fan-control">
-                        <label>Frånluftsfläkt</label>
+                    <div class="fan-control" id="fan2-control">
+                        <label id="fan2-label">Frånluftsfläkt</label>
                         <div class="slider-container">
                             <input type="range" class="modern-slider" id="exhaust-fan" min="0" max="100" value="0">
                             <span class="slider-value" id="exhaust-fan-value">0%</span>
                         </div>
                     </div>
-                    <div class="mode-toggle">
-                        <button class="btn-toggle active" data-mode="auto">Auto</button>
-                        <button class="btn-toggle" data-mode="manual">Manuell</button>
+                    <div class="setting-item profile-ftx-only profile-hidden" id="cycle-period-row">
+                        <label for="cycle-period">Cykelperiod (in+ut)</label>
+                        <div class="slider-container">
+                            <input type="range" class="modern-slider" id="cycle-period" min="20" max="300" step="10" value="60">
+                            <span class="slider-value" id="cycle-period-value">60 s</span>
+                        </div>
                     </div>
+                    <p class="ota-hint profile-ftx-only profile-hidden" id="cycle-phase-label">Fas: --</p>
                 </div>
                 
                 <div class="glass-card profile-ftx-only">
@@ -270,6 +490,23 @@
                         </div>
                     </div>
                 </div>
+            </div>
+            </div><!-- /mode-panel-generic -->
+        </div>
+
+        <!-- Help modal -->
+        <div id="help-modal" class="help-modal profile-hidden" role="dialog" aria-modal="true" aria-labelledby="help-modal-title">
+            <div class="help-modal-backdrop" data-help-close></div>
+            <div class="help-modal-card glass-card">
+                <header class="help-modal-header">
+                    <h2 id="help-modal-title">Hjälp</h2>
+                    <button type="button" class="btn-icon" data-help-close aria-label="Stäng">&times;</button>
+                </header>
+                <div id="help-modal-body" class="help-modal-body"></div>
+                <footer class="help-modal-footer">
+                    <a href="#" id="help-modal-doc-link" class="btn-sm btn-primary" target="_blank" rel="noopener">Öppna dokumentation</a>
+                    <button type="button" class="btn-sm" data-help-close>Stäng</button>
+                </footer>
             </div>
         </div>
 
@@ -362,20 +599,62 @@
             
             <div class="settings-grid">
                 <div class="glass-card profile-card">
-                    <h3><i class="fas fa-layer-group"></i> Applikation</h3>
+                    <h3><i class="fas fa-layer-group"></i> Applikationsläge</h3>
                     <p class="ota-hint" id="profile-description">
-                        Välj vilket användningsområde enheten ska anpassas för. Menyn och relevanta inställningar uppdateras automatiskt.
+                        Välj hur enheten används. Meny, sensorroller och styrning anpassas automatiskt.
                     </p>
                     <div class="setting-item">
-                        <label for="application-profile">Användningsområde</label>
+                        <label for="application-profile">Läge</label>
                         <select id="application-profile" class="input-sm">
-                            <option value="ac_monitor">Mobil AC</option>
-                            <option value="heat_exchanger">Värmeväxlare</option>
                             <option value="mini_ftx">Mini-FTX</option>
+                            <option value="heat_exchanger">Värmeväxlare</option>
+                            <option value="ac_monitor">Mobil AC</option>
                             <option value="sensor_only">Endast sensorer</option>
                         </select>
                     </div>
-                    <p class="ota-hint" id="profile-active-label">Aktiv profil: --</p>
+                    <p class="ota-hint" id="profile-active-label">Aktivt läge: --</p>
+                    <ul class="ota-hint" id="profile-capability-list" style="margin-top:8px;padding-left:1.2em;"></ul>
+
+                    <div id="ac-modules-panel" class="profile-hidden" style="margin-top:16px;">
+                        <h4 style="margin:0 0 8px;">Mobil AC – tillval
+                            <button type="button" class="help-tip" data-help="ac.modules_intro" aria-label="Hjälp">?</button>
+                        </h4>
+                        <p class="ota-hint">Välj hur enheten ska kopplas till din AC. Sensorövervakning är alltid aktiv.</p>
+                        <div class="module-grid">
+                            <label class="module-card module-locked">
+                                <input type="checkbox" checked disabled data-ac-mod="sensing">
+                                <div>
+                                    <strong>Sensorövervakning</strong>
+                                    <span>Mät kylutblås, kondensor och rum — alltid på.</span>
+                                </div>
+                            </label>
+                            <label class="module-card">
+                                <input type="checkbox" id="ac-mod-ir" data-ac-mod="ir_remote">
+                                <div>
+                                    <strong>IR-fjärr</strong>
+                                    <button type="button" class="help-tip" data-help="ac.mod_ir" aria-label="Hjälp">?</button>
+                                    <span>Styr AC som en infraröd fjärrkontroll.</span>
+                                </div>
+                            </label>
+                            <label class="module-card">
+                                <input type="checkbox" id="ac-mod-line" data-ac-mod="line_control">
+                                <div>
+                                    <strong>Linjestyrning</strong>
+                                    <button type="button" class="help-tip" data-help="ac.mod_line" aria-label="Hjälp">?</button>
+                                    <span>På/av via relä eller torrkontakt.</span>
+                                </div>
+                            </label>
+                            <label class="module-card">
+                                <input type="checkbox" id="ac-mod-assist" data-ac-mod="assist_fans">
+                                <div>
+                                    <strong>Hjälpfläktar</strong>
+                                    <button type="button" class="help-tip" data-help="ac.mod_assist" aria-label="Hjälp">?</button>
+                                    <span>PWM-fläktar som stödjer luftflöde.</span>
+                                </div>
+                            </label>
+                        </div>
+                        <button type="button" class="btn-sm btn-primary" id="save-ac-modules" style="margin-top:10px;">Spara AC-tillval</button>
+                    </div>
                 </div>
 
                 <div class="glass-card">

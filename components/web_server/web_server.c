@@ -39,6 +39,7 @@
 #include "audit_log.h"
 #include "log_manager.h"
 #include "device_profile.h"
+#include "fan_controller.h"
 #include "web_static.h"
 #include "wifi_manager.h"
 #include "ota_manager.h"
@@ -105,6 +106,8 @@ static esp_err_t wifi_config_delete_handler(httpd_req_t *req);
 static esp_err_t device_info_handler(httpd_req_t *req);
 static esp_err_t device_profile_get_handler(httpd_req_t *req);
 static esp_err_t device_profile_put_handler(httpd_req_t *req);
+static void add_control_object(cJSON *parent);
+static void add_profile_fields(cJSON *root);
 static esp_err_t device_name_handler(httpd_req_t *req);
 static esp_err_t device_restart_handler(httpd_req_t *req);
 static esp_err_t ota_status_handler(httpd_req_t *req);
@@ -1333,9 +1336,12 @@ static esp_err_t cert_status_handler(httpd_req_t *req)
     return send_json_response(req, root);
 }
 
-// POST /api/ftx/control - Control commands
+// POST /api/ftx/control - Control commands (maps into device_profile control state)
 static esp_err_t ftx_control_handler(httpd_req_t *req)
 {
+    if (!web_rate_limit_check(req)) {
+        return ESP_FAIL;
+    }
     add_security_headers(req);
     
     char buf[256];
@@ -1374,17 +1380,94 @@ static esp_err_t ftx_control_handler(httpd_req_t *req)
     }
     
     const char *cmd_str = cmd->valuestring;
-    int val = value ? value->valueint : 0;
+    int val = value && cJSON_IsNumber(value) ? value->valueint : 0;
     
-    ESP_LOGI(TAG, "FTX Control command: %s, value: %d", cmd_str, val);
+    ESP_LOGI(TAG, "Control command: %s, value: %d", cmd_str, val);
+
+    esp_err_t apply = ESP_OK;
+    bool en;
+    tf_fan_run_mode_t fm;
+    uint8_t spd;
+
+    if (strcmp(cmd_str, "enable") == 0 || strcmp(cmd_str, "control_enable") == 0) {
+        en = val != 0;
+        apply = device_profile_set_control(&en, NULL, NULL, NULL, NULL, NULL);
+    } else if (strcmp(cmd_str, "disable") == 0) {
+        en = false;
+        apply = device_profile_set_control(&en, NULL, NULL, NULL, NULL, NULL);
+    } else if (strcmp(cmd_str, "mode") == 0 || strcmp(cmd_str, "fan_mode") == 0) {
+        cJSON *mode_s = cJSON_GetObjectItem(json, "mode");
+        if (mode_s && cJSON_IsString(mode_s)) {
+            fm = device_profile_fan_mode_from_str(mode_s->valuestring);
+        } else if (val == 1) {
+            fm = TF_FAN_MODE_MANUAL;
+        } else if (val == 2) {
+            fm = TF_FAN_MODE_AUTO;
+        } else {
+            fm = TF_FAN_MODE_OFF;
+        }
+        apply = device_profile_set_control(NULL, NULL, &fm, NULL, NULL, NULL);
+    } else if (strcmp(cmd_str, "fan1") == 0 || strcmp(cmd_str, "supply_fan") == 0) {
+        spd = (uint8_t)val;
+        fm = TF_FAN_MODE_MANUAL;
+        en = true;
+        apply = device_profile_set_control(&en, NULL, &fm, &spd, NULL, NULL);
+    } else if (strcmp(cmd_str, "fan2") == 0 || strcmp(cmd_str, "exhaust_fan") == 0) {
+        spd = (uint8_t)val;
+        fm = TF_FAN_MODE_MANUAL;
+        en = true;
+        apply = device_profile_set_control(&en, NULL, &fm, NULL, &spd, NULL);
+    } else if (strcmp(cmd_str, "fans") == 0) {
+        spd = (uint8_t)val;
+        fm = TF_FAN_MODE_MANUAL;
+        en = true;
+        apply = device_profile_set_control(&en, NULL, &fm, &spd, &spd, NULL);
+    } else if (strcmp(cmd_str, "cycle_period") == 0) {
+        uint16_t period = (uint16_t)val;
+        apply = device_profile_set_control(NULL, NULL, NULL, NULL, NULL, &period);
+    } else if (strcmp(cmd_str, "ir") == 0 || strcmp(cmd_str, "electrical") == 0 ||
+               strcmp(cmd_str, "power") == 0 || strcmp(cmd_str, "cool") == 0 ||
+               strcmp(cmd_str, "fan_only") == 0) {
+        char note[24];
+        if (strcmp(cmd_str, "power") == 0) {
+            snprintf(note, sizeof(note), "power_%d", val);
+        } else if (strcmp(cmd_str, "cool") == 0) {
+            snprintf(note, sizeof(note), "cool");
+        } else if (strcmp(cmd_str, "fan_only") == 0) {
+            snprintf(note, sizeof(note), "fan_only");
+        } else {
+            snprintf(note, sizeof(note), "%s_%d", cmd_str, val);
+        }
+        device_profile_note_ac_command(note);
+        ESP_LOGW(TAG, "AC remote command stub: %s (not driven in hardware yet)", note);
+        apply = ESP_OK;
+    } else if (strcmp(cmd_str, "ac_cond_action") == 0) {
+        cJSON *mode_s = cJSON_GetObjectItem(json, "mode");
+        if (mode_s && cJSON_IsString(mode_s)) {
+            apply = device_profile_set_ac_cond_action(
+                device_profile_ac_cond_action_from_str(mode_s->valuestring));
+        } else {
+            apply = ESP_ERR_INVALID_ARG;
+        }
+    } else {
+        cJSON_Delete(json);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Unknown command");
+        return ESP_FAIL;
+    }
+
+    cJSON_Delete(json);
+
+    if (apply != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Command not valid for current mode");
+        return ESP_FAIL;
+    }
     
     cJSON *response = cJSON_CreateObject();
     cJSON_AddStringToObject(response, "status", "ok");
     cJSON_AddStringToObject(response, "command", cmd_str);
     cJSON_AddNumberToObject(response, "value", val);
     cJSON_AddBoolToObject(response, "simulation_mode", hardware_is_simulation_mode());
-    
-    cJSON_Delete(json);
+    add_control_object(response);
     return send_json_response(req, response);
 }
 
@@ -1863,6 +1946,118 @@ static esp_err_t logs_clear_handler(httpd_req_t *req)
     return send_json_response(req, response);
 }
 
+static void add_capabilities_object(cJSON *parent, device_profile_t profile)
+{
+    const device_profile_capabilities_t *cap = device_profile_get_capabilities(profile);
+    cJSON *capabilities = cJSON_CreateObject();
+    if (!capabilities) {
+        return;
+    }
+
+    cJSON *views = cJSON_CreateArray();
+    cJSON_AddItemToArray(views, cJSON_CreateString("dashboard"));
+    cJSON_AddItemToArray(views, cJSON_CreateString("sensors"));
+    if (cap->has_control_view) {
+        cJSON_AddItemToArray(views, cJSON_CreateString("control"));
+        cJSON_AddItemToArray(views, cJSON_CreateString("ftx")); /* alias for SPA */
+    }
+    cJSON_AddItemToArray(views, cJSON_CreateString("logs"));
+    cJSON_AddItemToArray(views, cJSON_CreateString("settings"));
+    cJSON_AddItemToObject(capabilities, "views", views);
+
+    if (cap->control_nav_label) {
+        cJSON_AddStringToObject(capabilities, "control_nav_label", cap->control_nav_label);
+    } else {
+        cJSON_AddNullToObject(capabilities, "control_nav_label");
+    }
+
+    cJSON *fans = cJSON_CreateObject();
+    cJSON_AddNumberToObject(fans, "count", cap->fan_count);
+    cJSON_AddBoolToObject(fans, "independent", cap->dual_fan_independent);
+    cJSON *roles = cJSON_CreateArray();
+    if (cap->fan_count >= 1) {
+        cJSON_AddItemToArray(roles, cJSON_CreateString(cap->alternating_cycle ? "bidirectional" : "supply"));
+    }
+    if (cap->fan_count >= 2) {
+        cJSON_AddItemToArray(roles, cJSON_CreateString("exhaust"));
+    }
+    cJSON_AddItemToObject(fans, "roles", roles);
+    cJSON_AddItemToObject(capabilities, "fans", fans);
+
+    cJSON *features = cJSON_CreateObject();
+    cJSON_AddBoolToObject(features, "heat_recovery_stats", cap->heat_recovery_stats);
+    cJSON_AddBoolToObject(features, "alternating_cycle", cap->alternating_cycle);
+    cJSON_AddBoolToObject(features, "dual_fan", cap->dual_fan_independent);
+    cJSON_AddBoolToObject(features, "ir_control", cap->ir_control);
+    cJSON_AddBoolToObject(features, "electrical_control", cap->electrical_control);
+    cJSON_AddBoolToObject(features, "pwm_control", cap->pwm_control);
+    cJSON_AddBoolToObject(features, "control_optional", cap->control_optional);
+    cJSON_AddBoolToObject(features, "has_control_view", cap->has_control_view);
+    cJSON_AddItemToObject(capabilities, "features", features);
+
+    cJSON_AddItemToObject(parent, "capabilities", capabilities);
+}
+
+static void add_control_object(cJSON *parent)
+{
+    device_control_state_t ctrl;
+    device_profile_get_control(&ctrl);
+
+    cJSON *control = cJSON_CreateObject();
+    if (!control) {
+        return;
+    }
+    cJSON_AddBoolToObject(control, "enabled", ctrl.control_enabled);
+    cJSON_AddBoolToObject(control, "active", device_profile_is_control_active());
+    cJSON_AddStringToObject(control, "method", device_profile_control_method_str(ctrl.control_method));
+    cJSON_AddStringToObject(control, "fan_mode", device_profile_fan_mode_str(ctrl.fan_mode));
+    cJSON_AddNumberToObject(control, "fan1_speed", ctrl.fan1_speed);
+    cJSON_AddNumberToObject(control, "fan2_speed", ctrl.fan2_speed);
+    cJSON_AddNumberToObject(control, "cycle_period_s", ctrl.cycle_period_s);
+    cJSON_AddStringToObject(control, "cycle_phase", device_profile_cycle_phase_str(ctrl.cycle_phase));
+
+    cJSON *ac_mod = cJSON_CreateObject();
+    if (ac_mod) {
+        cJSON_AddBoolToObject(ac_mod, "sensing", true);
+        cJSON_AddBoolToObject(ac_mod, "ir_remote",
+                              (ctrl.ac_modules & TF_AC_MOD_IR_REMOTE) != 0);
+        cJSON_AddBoolToObject(ac_mod, "line_control",
+                              (ctrl.ac_modules & TF_AC_MOD_LINE_CONTROL) != 0);
+        cJSON_AddBoolToObject(ac_mod, "assist_fans",
+                              (ctrl.ac_modules & TF_AC_MOD_ASSIST_FANS) != 0);
+        cJSON_AddItemToObject(control, "ac_modules", ac_mod);
+    }
+    cJSON_AddBoolToObject(control, "ac_has_actuation", device_profile_ac_has_actuation());
+    cJSON_AddStringToObject(control, "ac_cond_action",
+                            device_profile_ac_cond_action_str(ctrl.ac_cond_action));
+    cJSON_AddStringToObject(control, "ac_last_command",
+                            ctrl.ac_last_command[0] ? ctrl.ac_last_command : "");
+    cJSON_AddNumberToObject(control, "ac_last_command_ms", ctrl.ac_last_command_ms);
+
+    /* Live assist-fan telemetry (setpoint + RPM if tach wired) */
+    cJSON *fans = cJSON_CreateArray();
+    for (int i = 0; i < 2; i++) {
+        fan_status_t st = {0};
+        if (fan_controller_get_status((fan_id_t)i, &st) != ESP_OK) {
+            continue;
+        }
+        cJSON *f = cJSON_CreateObject();
+        cJSON_AddNumberToObject(f, "id", i + 1);
+        cJSON_AddNumberToObject(f, "setpoint_pct", st.speed_percent);
+        cJSON_AddNumberToObject(f, "rpm", st.rpm);
+        cJSON_AddBoolToObject(f, "fault", st.fault_detected);
+        cJSON_AddBoolToObject(f, "tach_available", st.rpm > 0 || st.fault_detected);
+        cJSON_AddItemToArray(fans, f);
+    }
+    cJSON_AddItemToObject(control, "assist_fans_status", fans);
+
+    const device_profile_capabilities_t *cap = device_profile_get_active_capabilities();
+    cJSON_AddBoolToObject(control, "ir_stub", cap->ir_control);
+    cJSON_AddBoolToObject(control, "electrical_stub", cap->electrical_control);
+
+    cJSON_AddItemToObject(parent, "control", control);
+}
+
 static void add_profile_fields(cJSON *root)
 {
     device_profile_t active = device_profile_get();
@@ -1870,6 +2065,9 @@ static void add_profile_fields(cJSON *root)
     cJSON_AddStringToObject(root, "application_profile_label", device_profile_label(active));
     cJSON_AddStringToObject(root, "application_profile_description",
                             device_profile_description(active));
+
+    add_capabilities_object(root, active);
+    add_control_object(root);
 
     cJSON *profiles = cJSON_CreateArray();
     for (int i = 0; i < TF_MODE_COUNT; i++) {
@@ -1879,6 +2077,9 @@ static void add_profile_fields(cJSON *root)
         cJSON_AddStringToObject(item, "description",
                                 device_profile_description((device_profile_t)i));
         cJSON_AddBoolToObject(item, "active", i == (int)active);
+        const device_profile_capabilities_t *cap = device_profile_get_capabilities((device_profile_t)i);
+        cJSON_AddBoolToObject(item, "has_control_view", cap->has_control_view);
+        cJSON_AddNumberToObject(item, "fan_count", cap->fan_count);
         cJSON_AddItemToArray(profiles, item);
     }
     cJSON_AddItemToObject(root, "available_profiles", profiles);
@@ -1903,7 +2104,7 @@ static esp_err_t device_profile_put_handler(httpd_req_t *req)
     }
     add_security_headers(req);
 
-    char body[256] = {0};
+    char body[512] = {0};
     int received = httpd_req_recv(req, body, sizeof(body) - 1);
     if (received <= 0) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty body");
@@ -1917,28 +2118,130 @@ static esp_err_t device_profile_put_handler(httpd_req_t *req)
     }
 
     cJSON *profile_item = cJSON_GetObjectItem(json, "profile");
-    if (!profile_item || !cJSON_IsString(profile_item)) {
+    if (profile_item && cJSON_IsString(profile_item)) {
+        device_profile_t profile = device_profile_from_id(profile_item->valuestring);
+        if (!device_profile_is_valid(profile) ||
+            strcmp(device_profile_to_id(profile), profile_item->valuestring) != 0) {
+            cJSON_Delete(json);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid profile");
+            return ESP_FAIL;
+        }
+        esp_err_t ret = device_profile_set(profile);
+        if (ret != ESP_OK) {
+            cJSON_Delete(json);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to save profile");
+            return ESP_FAIL;
+        }
+        audit_log_event(AUDIT_EVENT_CONFIG_CHANGE, AUDIT_SEVERITY_INFO,
+                        "Application mode set to %s", device_profile_to_id(profile));
+    }
+
+    bool has_ctrl = false;
+    bool control_enabled = false;
+    tf_control_method_t method = TF_CTRL_METHOD_NONE;
+    tf_fan_run_mode_t fan_mode = TF_FAN_MODE_OFF;
+    uint8_t fan1 = 0, fan2 = 0;
+    uint16_t cycle = 0;
+    const bool *p_en = NULL;
+    const tf_control_method_t *p_meth = NULL;
+    const tf_fan_run_mode_t *p_fm = NULL;
+    const uint8_t *p_f1 = NULL, *p_f2 = NULL;
+    const uint16_t *p_cycle = NULL;
+
+    cJSON *en = cJSON_GetObjectItem(json, "control_enabled");
+    if (en && cJSON_IsBool(en)) {
+        control_enabled = cJSON_IsTrue(en);
+        p_en = &control_enabled;
+        has_ctrl = true;
+    }
+    cJSON *meth = cJSON_GetObjectItem(json, "control_method");
+    if (meth && cJSON_IsString(meth)) {
+        method = device_profile_control_method_from_str(meth->valuestring);
+        p_meth = &method;
+        has_ctrl = true;
+    }
+    cJSON *fm = cJSON_GetObjectItem(json, "fan_mode");
+    if (fm && cJSON_IsString(fm)) {
+        fan_mode = device_profile_fan_mode_from_str(fm->valuestring);
+        p_fm = &fan_mode;
+        has_ctrl = true;
+    }
+    cJSON *f1 = cJSON_GetObjectItem(json, "fan1_speed");
+    if (f1 && cJSON_IsNumber(f1)) {
+        fan1 = (uint8_t)f1->valueint;
+        p_f1 = &fan1;
+        has_ctrl = true;
+    }
+    cJSON *f2 = cJSON_GetObjectItem(json, "fan2_speed");
+    if (f2 && cJSON_IsNumber(f2)) {
+        fan2 = (uint8_t)f2->valueint;
+        p_f2 = &fan2;
+        has_ctrl = true;
+    }
+    cJSON *cy = cJSON_GetObjectItem(json, "cycle_period_s");
+    if (cy && cJSON_IsNumber(cy)) {
+        cycle = (uint16_t)cy->valueint;
+        p_cycle = &cycle;
+        has_ctrl = true;
+    }
+
+    cJSON *ac_modules = cJSON_GetObjectItem(json, "ac_modules");
+    bool has_ac_mod = ac_modules && cJSON_IsObject(ac_modules);
+    cJSON *ac_cond = cJSON_GetObjectItem(json, "ac_cond_action");
+    bool has_ac_cond = ac_cond && cJSON_IsString(ac_cond);
+
+    if (!profile_item && !has_ctrl && !has_ac_mod && !has_ac_cond) {
         cJSON_Delete(json);
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing profile");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing profile or control fields");
         return ESP_FAIL;
     }
 
-    device_profile_t profile = device_profile_from_id(profile_item->valuestring);
-    if (!device_profile_is_valid(profile)) {
-        cJSON_Delete(json);
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid profile");
-        return ESP_FAIL;
+    if (has_ac_cond) {
+        tf_ac_cond_action_t act = device_profile_ac_cond_action_from_str(ac_cond->valuestring);
+        if (device_profile_set_ac_cond_action(act) != ESP_OK) {
+            cJSON_Delete(json);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid condensation action");
+            return ESP_FAIL;
+        }
+        audit_log_event(AUDIT_EVENT_CONFIG_CHANGE, AUDIT_SEVERITY_INFO,
+                        "AC condensation action: %s", ac_cond->valuestring);
     }
+
+    if (has_ac_mod) {
+        uint8_t mask = 0;
+        cJSON *ir = cJSON_GetObjectItem(ac_modules, "ir_remote");
+        cJSON *line = cJSON_GetObjectItem(ac_modules, "line_control");
+        cJSON *assist = cJSON_GetObjectItem(ac_modules, "assist_fans");
+        if (ir && cJSON_IsTrue(ir)) {
+            mask |= TF_AC_MOD_IR_REMOTE;
+        }
+        if (line && cJSON_IsTrue(line)) {
+            mask |= TF_AC_MOD_LINE_CONTROL;
+        }
+        if (assist && cJSON_IsTrue(assist)) {
+            mask |= TF_AC_MOD_ASSIST_FANS;
+        }
+        esp_err_t mret = device_profile_set_ac_modules(mask);
+        if (mret != ESP_OK) {
+            cJSON_Delete(json);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "AC modules only valid in Mobil AC mode");
+            return ESP_FAIL;
+        }
+        audit_log_event(AUDIT_EVENT_CONFIG_CHANGE, AUDIT_SEVERITY_INFO,
+                        "AC modules updated (mask=0x%02x)", mask);
+    }
+
+    if (has_ctrl) {
+        esp_err_t cret = device_profile_set_control(p_en, p_meth, p_fm, p_f1, p_f2, p_cycle);
+        if (cret != ESP_OK) {
+            cJSON_Delete(json);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid control settings for mode");
+            return ESP_FAIL;
+        }
+        audit_log_event(AUDIT_EVENT_CONFIG_CHANGE, AUDIT_SEVERITY_INFO, "Control settings updated");
+    }
+
     cJSON_Delete(json);
-
-    esp_err_t ret = device_profile_set(profile);
-    if (ret != ESP_OK) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to save profile");
-        return ESP_FAIL;
-    }
-
-    audit_log_event(AUDIT_EVENT_CONFIG_CHANGE, AUDIT_SEVERITY_INFO,
-                    "Application profile set to %s", device_profile_to_id(profile));
 
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "success", true);

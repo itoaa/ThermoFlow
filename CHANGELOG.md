@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reduced serial log noise (default serial level WARN); NVS persist throttled to WARN+ / audit
 
 ### Added
+- **Application modes** model (Mini-FTX, Värmeväxlare, Mobil AC, Endast sensorer) with capabilities + control state — [APPLICATION_MODES.md](docs/APPLICATION_MODES.md)
+- **Mobil AC** deep UI: tillval (Sensorövervakning, IR-fjärr, Linjestyrning, Hjälpfläktar), flikar Överblick/Styrning, nyckeltal (kyllyft, värmeavgivning, sidobalans, kondensrisk, kylindex), hjälpikoner (?) länkade till [MOBILE_AC.md](docs/MOBILE_AC.md)
+- API `control.ac_modules` for IR/line/assist fan integrations
+- **AC Styrning** redesigned: no master enable (settings modules enable); run mode manual/auto; condensation policy (`observe` / `boost_assist` / `request_fan_only`); live assist fan setpoint+RPM status; remote command intent log
+- Profile API returns `capabilities` and `control`; PUT accepts `control_enabled`, `control_method`, fan speeds, cycle period
+- Control UI: master enable, auto/manual/off, dual/single fan, AC IR/el stubs, Mini-FTX cycle phase
 - **Optional PSRAM** with stability-first policy (capability allocator only, not default `malloc`)
 - `tf_mem` helpers: prefer PSRAM for bulk non-DMA buffers with internal fallback
 - Live heap/PSRAM stats in `GET /api/device/info` and Inställningar UI

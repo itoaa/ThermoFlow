@@ -161,23 +161,123 @@ static void apply_fan_policy(float temp_c, float rh_percent, uint8_t *fan1_speed
     *fan1_speed = 0;
     *fan2_speed = 0;
 
+    device_control_state_t ctrl;
+    device_profile_get_control(&ctrl);
+    const device_profile_capabilities_t *cap = device_profile_get_active_capabilities();
+    device_profile_t mode = device_profile_get();
+
+    /* No PWM unless control active and mode has fans (or AC assist fans) */
+    bool ac_assist = (mode == TF_MODE_AC_MONITOR) &&
+                     (ctrl.ac_modules & TF_AC_MOD_ASSIST_FANS);
+    if ((!device_profile_is_control_active() || !cap->pwm_control) && !ac_assist) {
+        return;
+    }
+    if (mode == TF_MODE_SENSOR_ONLY) {
+        return;
+    }
+    if (mode == TF_MODE_AC_MONITOR && !ac_assist) {
+        return;
+    }
+
     if (!hardware_is_detected(HW_COMPONENT_FAN_1)) {
+        return;
+    }
+
+    if (ctrl.fan_mode == TF_FAN_MODE_OFF && mode != TF_MODE_AC_MONITOR) {
         return;
     }
 
     bool condensation = anti_condensation_is_active();
 
-    switch (device_profile_get()) {
-        case TF_MODE_AC_MONITOR:
-        case TF_MODE_SENSOR_ONLY:
-            if (!condensation) {
-                *fan1_speed = 0;
-            }
-            break;
+    /* ---- Mobil AC help-fans ---- */
+    if (mode == TF_MODE_AC_MONITOR && ac_assist) {
+        fan_controller_exit_failsafe();
+        /* Cold-side RH is often the condensation driver for portable AC ducts */
+        float cold_rh = rh_percent;
+        bool high_cond = (cold_rh >= 85.0f && temp_c <= 16.0f) ||
+                         (cold_rh >= 70.0f && temp_c <= 18.0f && condensation);
 
+        if (ctrl.fan_mode == TF_FAN_MODE_OFF) {
+            *fan1_speed = 0;
+            *fan2_speed = 0;
+            return;
+        }
+
+        if (ctrl.fan_mode == TF_FAN_MODE_MANUAL) {
+            *fan1_speed = ctrl.fan1_speed;
+            *fan2_speed = ctrl.fan2_speed;
+        } else {
+            /* AUTO: scale assist with humidity / mild cooling demand */
+            uint8_t base = 20;
+            if (cold_rh > 60.0f) {
+                base = (uint8_t)(20 + (cold_rh - 60.0f) * 1.5f);
+            }
+            if (base > 70) {
+                base = 70;
+            }
+            *fan1_speed = base;
+            *fan2_speed = base;
+        }
+
+        /* Condensation policy overrides (SR-010 style for AC duct risk) */
+        if (high_cond) {
+            switch (ctrl.ac_cond_action) {
+                case TF_AC_COND_BOOST_ASSIST:
+                    if (*fan1_speed < 85) {
+                        *fan1_speed = 85;
+                    }
+                    if (*fan2_speed < 85) {
+                        *fan2_speed = 85;
+                    }
+                    break;
+                case TF_AC_COND_REQUEST_FAN_ONLY:
+                    device_profile_note_ac_command("fan_only_request");
+                    /* Keep assist elevated while we "request" milder AC mode */
+                    if (*fan1_speed < 60) {
+                        *fan1_speed = 60;
+                    }
+                    *fan2_speed = *fan1_speed;
+                    break;
+                case TF_AC_COND_OBSERVE:
+                default:
+                    break;
+            }
+        }
+
+        if (!hardware_is_detected(HW_COMPONENT_FAN_2)) {
+            *fan2_speed = 0;
+        }
+        return;
+    }
+
+    if (ctrl.fan_mode == TF_FAN_MODE_MANUAL) {
+        *fan1_speed = ctrl.fan1_speed;
+        if (cap->dual_fan_independent) {
+            *fan2_speed = ctrl.fan2_speed;
+        } else {
+            *fan2_speed = *fan1_speed;
+        }
+        /* SR-010: Mini-FTX may force full flow at high RH even in manual */
+        if (mode == TF_MODE_MINI_FTX && condensation) {
+            *fan1_speed = 100;
+            *fan2_speed = 100;
+        }
+        if (mode == TF_MODE_HEAT_EXCHANGER && condensation) {
+            *fan1_speed = 0;
+            *fan2_speed = 0;
+            fan_controller_enter_failsafe("SR-010 high RH");
+        } else {
+            fan_controller_exit_failsafe();
+        }
+        return;
+    }
+
+    /* AUTO */
+    switch (mode) {
         case TF_MODE_HEAT_EXCHANGER:
             if (condensation) {
                 *fan1_speed = 0;
+                *fan2_speed = 0;
                 fan_controller_enter_failsafe("SR-010 high RH");
             } else {
                 fan_controller_exit_failsafe();
@@ -188,11 +288,14 @@ static void apply_fan_policy(float temp_c, float rh_percent, uint8_t *fan1_speed
                 if (*fan1_speed > 60) {
                     *fan1_speed = 60;
                 }
+                /* Independent second fan: same auto curve for now (balance) */
+                *fan2_speed = *fan1_speed;
             }
             break;
 
         case TF_MODE_MINI_FTX:
         default:
+            fan_controller_exit_failsafe();
             if (g_ftx_initialized) {
                 uint8_t recommended = ftx_recommend_fan_speed_hysteresis(&g_ftx_data,
                                                                           fan_controller_get_speed(FAN_1));
@@ -206,10 +309,23 @@ static void apply_fan_policy(float temp_c, float rh_percent, uint8_t *fan1_speed
             } else {
                 *fan1_speed = fan_controller_calc_speed_from_temp(temp_c, 20.0f, SIM_MIN_TEMP_C, SIM_MAX_TEMP_C);
             }
+            *fan2_speed = *fan1_speed;
+            /* Phase placeholder for UI until reverse/spjäll hardware exists */
+            {
+                uint32_t half = (ctrl.cycle_period_s > 0 ? ctrl.cycle_period_s : 60) / 2;
+                if (half < 5) {
+                    half = 5;
+                }
+                uint32_t tick = (esp_log_timestamp() / 1000) % (half * 2);
+                device_profile_set_cycle_phase(tick < half ? TF_CYCLE_PHASE_EXHAUST
+                                                          : TF_CYCLE_PHASE_INTAKE);
+            }
             break;
     }
 
-    if (hardware_is_detected(HW_COMPONENT_FAN_2)) {
+    if (!hardware_is_detected(HW_COMPONENT_FAN_2)) {
+        *fan2_speed = 0;
+    } else if (!cap->dual_fan_independent && mode != TF_MODE_HEAT_EXCHANGER) {
         *fan2_speed = *fan1_speed;
     }
 }

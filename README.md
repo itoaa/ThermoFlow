@@ -27,6 +27,7 @@ ThermoFlow is an ESP32-S3 based system for monitoring temperature and humidity, 
 | Enhets-ID från MAC + redigerbart visningsnamn | ✅ |
 | HTTP web server + SPA (dashboard, FTX, inställningar, logg) | ✅ |
 | Unified logging (`log_manager`: serial, web, NVS, MQTT) | ✅ |
+| Application modes (FTX / HX / AC / sensors) + control policy | ✅ |
 | Optional PSRAM (bulk logs only; works without PSRAM) | ✅ |
 | Live heap / PSRAM in Inställningar + `/api/device/info` | ✅ |
 | MQTT / FTX (when broker configured) | ✅ |
@@ -137,6 +138,8 @@ Exempel `GET /api/device/info`:
 | Document | Purpose |
 |----------|---------|
 | [LOGGING.md](docs/LOGGING.md) | Unified logging architecture |
+| [APPLICATION_MODES.md](docs/APPLICATION_MODES.md) | Mini-FTX, värmeväxlare, mobil AC, sensor-only |
+| [MOBILE_AC.md](docs/MOBILE_AC.md) | Mobil AC: tillval, nyckeltal, hjälptexter |
 | [PSRAM.md](docs/PSRAM.md) | Optional PSRAM policy (`tf_mem`, stability rules) |
 | [WIFI_AND_FLASH.md](docs/WIFI_AND_FLASH.md) | WiFi, onboarding, app-flash, felsökning |
 | [VERSIONING.md](docs/VERSIONING.md) | CalVer `YYYY.WW.BUILD` |

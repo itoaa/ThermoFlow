@@ -26,58 +26,25 @@ const state = {
     applicationProfile: localStorage.getItem('applicationProfile') || 'heat_exchanger'
 };
 
+/**
+ * Application modes — mirrors firmware docs/APPLICATION_MODES.md
+ * API capabilities can override labels/views at runtime.
+ */
 const APPLICATION_PROFILES = {
-    ac_monitor: {
-        label: 'Mobil AC',
-        description: 'Övervaka kall och varm luft från portabel AC.',
-        views: ['dashboard', 'sensors', 'logs', 'settings'],
-        ftxNavLabel: null,
-        dashboardSubtitle: 'Övervakning av portabel AC',
-        sensorsSubtitle: 'Kall- och varmluftsmätningar',
-        gaugeOutdoor: 'Kalluft (utblås)',
-        gaugeIndoor: 'Varm avluft',
-        ftxTitle: null,
-        ftxSubtitle: null,
-        sensors: [
-            { name: 'Kalluft (utblås)', icon: 'snowflake', tempKey: 'supply_temp', rhKey: 'supply_rh' },
-            { name: 'Varm avluft', icon: 'fire', tempKey: 'exhaust_temp', rhKey: 'exhaust_rh' },
-            { name: 'Omgivning', icon: 'cloud-sun', tempKey: 'outdoor_temp', rhKey: 'outdoor_rh' }
-        ],
-        gaugePrimary: { tempKey: 'supply_temp', rhKey: 'supply_rh' },
-        gaugeSecondary: { tempKey: 'exhaust_temp', rhKey: 'exhaust_rh' },
-        showFtxStats: false
-    },
-    heat_exchanger: {
-        label: 'Värmeväxlare',
-        description: 'DIY-värmeväxlare med 1–2 fläktar och kondenseringsskydd.',
-        views: ['dashboard', 'sensors', 'ftx', 'logs', 'settings'],
-        ftxNavLabel: 'Fläktar',
-        dashboardSubtitle: 'Överblick av värmeväxlaren',
-        sensorsSubtitle: 'Intags- och utblåsluft',
-        gaugeOutdoor: 'Intagsluft',
-        gaugeIndoor: 'Utblåsluft',
-        ftxTitle: 'Fläktstyrning',
-        ftxSubtitle: 'Manuell eller automatisk fläktreglering',
-        sensors: [
-            { name: 'Intagsluft', icon: 'sign-in-alt', tempKey: 'supply_temp', rhKey: 'supply_rh' },
-            { name: 'Utblåsluft', icon: 'sign-out-alt', tempKey: 'exhaust_temp', rhKey: 'exhaust_rh' },
-            { name: 'Omgivning', icon: 'cloud-sun', tempKey: 'outdoor_temp', rhKey: 'outdoor_rh' }
-        ],
-        gaugePrimary: { tempKey: 'supply_temp', rhKey: 'supply_rh' },
-        gaugeSecondary: { tempKey: 'exhaust_temp', rhKey: 'exhaust_rh' },
-        showFtxStats: false
-    },
     mini_ftx: {
         label: 'Mini-FTX',
-        description: 'Frånluftsventilation med värmeåtervinning och FTX-diagnostik.',
+        description: 'Regenerativ värmeåtervinning med keramiskt element. Fläkt växelvis in och ut.',
         views: ['dashboard', 'sensors', 'ftx', 'logs', 'settings'],
         ftxNavLabel: 'FTX',
-        dashboardSubtitle: 'Realtidsöverblick av FTX-systemet',
-        sensorsSubtitle: 'Detaljerade mätningar från alla luftflöden',
-        gaugeOutdoor: 'Utomhustemperatur',
-        gaugeIndoor: 'Tilluftstemperatur',
-        ftxTitle: 'FTX-system',
-        ftxSubtitle: 'Frånluftsventilation med värmeåtervinning',
+        dashboardSubtitle: 'Regenerativ ventilation med värmeåtervinning',
+        sensorsSubtitle: 'Till-, från- och uteluft',
+        gaugeOutdoor: 'Utomhus',
+        gaugeIndoor: 'Tilluft',
+        ftxTitle: 'Mini-FTX',
+        ftxSubtitle: 'Keramisk lagring · växlande flöde in/ut',
+        controlHint: 'Styr fläkthastighet och cykel. Av = endast mätning.',
+        fan1Label: 'Fläkt (växlande riktning)',
+        fan2Label: null,
         sensors: [
             { name: 'Utomhus', icon: 'cloud-sun', tempKey: 'outdoor_temp', rhKey: 'outdoor_rh' },
             { name: 'Tilluft', icon: 'wind', tempKey: 'supply_temp', rhKey: 'supply_rh' },
@@ -86,11 +53,88 @@ const APPLICATION_PROFILES = {
         ],
         gaugePrimary: { tempKey: 'outdoor_temp', rhKey: 'outdoor_rh' },
         gaugeSecondary: { tempKey: 'supply_temp', rhKey: 'supply_rh' },
-        showFtxStats: true
+        showFtxStats: true,
+        showPwmFans: true,
+        showFan2: false,
+        showCycle: true,
+        showAcControls: false,
+        capabilitiesSummary: [
+            '1 fläkt, regenerativ cykel',
+            'Värmeåtervinningsstatistik',
+            'Valfri styrning (PWM)'
+        ]
+    },
+    heat_exchanger: {
+        label: 'Värmeväxlare',
+        description: 'Kontinuerlig tilluft och frånluft samtidigt. Oberoende styrning av två fläktar.',
+        views: ['dashboard', 'sensors', 'ftx', 'logs', 'settings'],
+        ftxNavLabel: 'Fläktar',
+        dashboardSubtitle: 'Överblick av värmeväxlaren',
+        sensorsSubtitle: 'Intags- och utblåsluft',
+        gaugeOutdoor: 'Tilluft / intag',
+        gaugeIndoor: 'Frånluft / avluft',
+        ftxTitle: 'Värmeväxlare',
+        ftxSubtitle: 'Kontinuerligt flöde · oberoende in- och utfläkt',
+        controlHint: 'Styr tillufts- och frånluftsfläkt var för sig. Av = endast mätning.',
+        fan1Label: 'Tilluft (in)',
+        fan2Label: 'Frånluft (ut)',
+        sensors: [
+            { name: 'Tilluft / intag', icon: 'sign-in-alt', tempKey: 'supply_temp', rhKey: 'supply_rh' },
+            { name: 'Frånluft', icon: 'home', tempKey: 'extract_temp', rhKey: 'extract_rh' },
+            { name: 'Avluft', icon: 'sign-out-alt', tempKey: 'exhaust_temp', rhKey: 'exhaust_rh' },
+            { name: 'Uteluft', icon: 'cloud-sun', tempKey: 'outdoor_temp', rhKey: 'outdoor_rh' }
+        ],
+        gaugePrimary: { tempKey: 'supply_temp', rhKey: 'supply_rh' },
+        gaugeSecondary: { tempKey: 'exhaust_temp', rhKey: 'exhaust_rh' },
+        showFtxStats: false,
+        showPwmFans: true,
+        showFan2: true,
+        showCycle: false,
+        showAcControls: false,
+        capabilitiesSummary: [
+            '2 fläktar, oberoende',
+            'Kontinuerligt flöde',
+            'Kondenseringsskydd'
+        ]
+    },
+    ac_monitor: {
+        label: 'Mobil AC',
+        description: 'Portabel AC: mät kylutblås och kondensor. Valfria tillval: IR-fjärr, linjestyrning, hjälpfläktar.',
+        views: ['dashboard', 'sensors', 'ftx', 'logs', 'settings'],
+        ftxNavLabel: 'Mobil AC',
+        dashboardSubtitle: 'Kylprestanda och temperaturer för din AC',
+        sensorsSubtitle: 'Kylutblås, kondensorutblås och rumsluft',
+        gaugeOutdoor: 'Kylutblås',
+        gaugeIndoor: 'Kondensorutblås',
+        ftxTitle: 'Mobil AC',
+        ftxSubtitle: 'Överblick av kyla, värmeavgivning och fukt',
+        controlHint: 'Aktivera tillval under Inställningar, sedan styrning här.',
+        fan1Label: 'Hjälpfläkt 1',
+        fan2Label: 'Hjälpfläkt 2',
+        sensors: [
+            { name: 'Kylutblås', icon: 'snowflake', tempKey: 'supply_temp', rhKey: 'supply_rh' },
+            { name: 'Kondensorutblås', icon: 'fire', tempKey: 'exhaust_temp', rhKey: 'exhaust_rh' },
+            { name: 'Rumsluft', icon: 'home', tempKey: 'outdoor_temp', rhKey: 'outdoor_rh' },
+            { name: 'Extra mätpunkt', icon: 'thermometer-half', tempKey: 'extract_temp', rhKey: 'extract_rh' }
+        ],
+        gaugePrimary: { tempKey: 'supply_temp', rhKey: 'supply_rh' },
+        gaugeSecondary: { tempKey: 'exhaust_temp', rhKey: 'exhaust_rh' },
+        showFtxStats: false,
+        showPwmFans: false,
+        showFan2: false,
+        showCycle: false,
+        showAcControls: true,
+        isMobileAc: true,
+        capabilitiesSummary: [
+            'Sensorövervakning (alltid)',
+            'Valfri IR-fjärr / linjestyrning',
+            'Valfria hjälpfläktar',
+            'Nyckeltal: kyllyft, sidobalans, kondensrisk'
+        ]
     },
     sensor_only: {
         label: 'Endast sensorer',
-        description: 'Temperatur och luftfuktighet utan fläktstyrning.',
+        description: 'Temperatur och luftfuktighet utan fläkt- eller AC-styrning.',
         views: ['dashboard', 'sensors', 'logs', 'settings'],
         ftxNavLabel: null,
         dashboardSubtitle: 'Sensorövervakning',
@@ -99,6 +143,9 @@ const APPLICATION_PROFILES = {
         gaugeIndoor: 'Sensor 2',
         ftxTitle: null,
         ftxSubtitle: null,
+        controlHint: null,
+        fan1Label: null,
+        fan2Label: null,
         sensors: [
             { name: 'Sensor 1', icon: 'thermometer-half', tempKey: 'outdoor_temp', rhKey: 'outdoor_rh' },
             { name: 'Sensor 2', icon: 'thermometer-half', tempKey: 'supply_temp', rhKey: 'supply_rh' },
@@ -107,7 +154,12 @@ const APPLICATION_PROFILES = {
         ],
         gaugePrimary: { tempKey: 'outdoor_temp', rhKey: 'outdoor_rh' },
         gaugeSecondary: { tempKey: 'supply_temp', rhKey: 'supply_rh' },
-        showFtxStats: false
+        showFtxStats: false,
+        showPwmFans: false,
+        showFan2: false,
+        showCycle: false,
+        showAcControls: false,
+        capabilitiesSummary: ['Endast mätning och logg']
     }
 };
 
@@ -115,34 +167,261 @@ function getProfileConfig(profileId = state.applicationProfile) {
     return APPLICATION_PROFILES[profileId] || APPLICATION_PROFILES.heat_exchanger;
 }
 
+/** Help texts synced with docs/MOBILE_AC.md (short = hover, long = click) */
+const HELP_CATALOG = {
+    'ac.modules_intro': {
+        title: 'Mobil AC – tillval',
+        short: 'Välj hur ThermoFlow kopplas till din portabla AC.',
+        long: 'Sensorövervakning är alltid aktiv. IR-fjärr, linjestyrning och hjälpfläktar är valfria tillval som aktiverar fliken Styrning. Se dokumentationen för montering och API.',
+        doc: 'MOBILE_AC.md#integrationer-val-under-inställningar'
+    },
+    'ac.mod_ir': {
+        title: 'IR-fjärr',
+        short: 'Styr AC som en infraröd fjärrkontroll.',
+        long: 'ThermoFlow ska kunna efterlikna fjärrkontrollens IR-koder (på/av, läge, fläkt). Mjukvaran sparar avsikt redan nu; faktisk sändning kräver IR-LED och protokollmappning.',
+        doc: 'MOBILE_AC.md#ir-fjärr'
+    },
+    'ac.mod_line': {
+        title: 'Linjestyrning',
+        short: 'På/av via relä eller torrkontakt.',
+        long: 'Elektrisk signal (relä/GPIO) för enkla kommandon som ström. Kräver mappad utgång. Sparas som linjestyrning tills hårdvara är ansluten.',
+        doc: 'MOBILE_AC.md#linjestyrning'
+    },
+    'ac.mod_assist': {
+        title: 'Hjälpfläktar',
+        short: 'PWM-fläktar som stödjer luftflöde.',
+        long: 'Använder ThermoFlows fläktutgångar som tillägg till AC:ns egen fläkt, t.ex. för avluft eller cirkulation. Oberoende av IR/linje.',
+        doc: 'MOBILE_AC.md#hjälpfläktar'
+    },
+    'ac.cold_side': {
+        title: 'Kylsida / kylutblås',
+        short: 'Kall luft från AC in i rummet.',
+        long: 'Mät i kalluftsströmmen (supply). Lägre än rumstemperatur betyder aktiv kyla. Se monteringstips i dokumentationen.',
+        doc: 'MOBILE_AC.md#kylutblås'
+    },
+    'ac.hot_side': {
+        title: 'Varmsida / kondensorutblås',
+        short: 'Värme som pumpas bort från rummet.',
+        long: 'Mät i varm slang eller kondensorutblås (exhaust). Hög temperatur visar att värme avges – viktigt att den går dit den ska.',
+        doc: 'MOBILE_AC.md#kondensorutblås'
+    },
+    'ac.room': {
+        title: 'Rumsluft',
+        short: 'Referenstemperatur i rummet.',
+        long: 'Används för att räkna kyllyft och värmeavgivning. Placera ca 1,5 m upp, bort från drag och sol.',
+        doc: 'MOBILE_AC.md#rumsluft'
+    },
+    'ac.cooling_delta': {
+        title: 'Kyllyft (ΔT)',
+        short: 'Hur mycket kallare utblåset är än rummet.',
+        long: 'Kyllyft = rumsluft − kylutblås (°C). Stort värde ≈ tydlig kyleffekt. Nära noll kan betyda avstängd AC, fläktläge eller fel sensormontering.',
+        doc: 'MOBILE_AC.md#kyllyft-δt'
+    },
+    'ac.heat_reject': {
+        title: 'Värmeavgivning (ΔT)',
+        short: 'Hur mycket varmare kondensorluften är än rummet.',
+        long: 'Värmeavgivning = kondensorutblås − rumsluft (°C). Visar att värme flyttas ut. Låg avgivning vid högt kyllyft kan tyda på mätfel.',
+        doc: 'MOBILE_AC.md#värmeavgivning-δt'
+    },
+    'ac.side_balance': {
+        title: 'Sidobalans',
+        short: 'Förhållande mellan varm ΔT och kyl ΔT.',
+        long: 'Ungefär värmeavgivning / kyllyft när kyllyft > 0,5 °C. Inte fabriks-COP, men en snabb hälsokoll på mätpunkter och flöde.',
+        doc: 'MOBILE_AC.md#sidobalans'
+    },
+    'ac.cond_risk': {
+        title: 'Kondensrisk',
+        short: 'Risk för kondens i kalluft/slang.',
+        long: 'Baseras på fukt och temperatur i kylutblås. Hög RH + låg temperatur → högre risk. Klassas som låg / medel / hög enligt dokumentationen.',
+        doc: 'MOBILE_AC.md#kondensrisk'
+    },
+    'ac.cooling_index': {
+        title: 'Kylindex',
+        short: '0–100: hur hårt AC:n kyler just nu.',
+        long: 'Normaliserat från kyllyft (0 °C → 0, ca 12 °C → 100). Lättläst indikator utan energimätare.',
+        doc: 'MOBILE_AC.md#kylindex'
+    },
+    'ac.cold_rh': {
+        title: 'Fukt i kylutblås',
+        short: 'Relativ fukt i den kalla luften.',
+        long: 'Hög RH på kall luft ökar kondensrisk i slang och utblås. Kombinera med kylutblåstemperatur.',
+        doc: 'MOBILE_AC.md#fukt-i-kylutblås'
+    },
+    'ac.policy': {
+        title: 'Driftpolicy',
+        short: 'Hur fläktar och fjärr beter sig i normal drift och vid risk.',
+        long: 'Manuell = du sätter PWM. Automatisk = hastighet beräknas från fukt/temperatur. Vid kondensrisk kan policy förstärka fläktar eller begära fläktläge på AC:n (IR/linje).',
+        doc: 'MOBILE_AC.md#styrning-driftpolicy'
+    },
+    'ac.run_mode': {
+        title: 'Reglerläge',
+        short: 'Manuell eller automatisk fläktstyrning.',
+        long: 'Manuell: börvärden från reglage. Automatisk: baseras på fukt i kylutblås och kylbehov, likt vanliga ESPHome/HA PWM-fläktregulatorer.',
+        doc: 'MOBILE_AC.md#manuell-vs-automatisk'
+    },
+    'ac.cond_action': {
+        title: 'Vid kondensrisk',
+        short: 'Vad systemet gör när kalluft + hög RH indikerar kondens.',
+        long: 'Endast övervaka = logg/UI. Förstärk hjälpfläktar = höj PWM för att torka/transportera fuktig luft. Begär fläktläge = skicka avsikt till AC via IR/linje (stub tills hårdvara).',
+        doc: 'MOBILE_AC.md#kondensrisk-åtgärder'
+    },
+    'ac.assist_live': {
+        title: 'Hjälpfläktar – live',
+        short: 'Börvärde (PWM %) och RPM från tachometer.',
+        long: 'Börvärde är den signal ThermoFlow skickar (0–100 %). RPM kräver 4-pin fläkt med tach till GPIO. Saknas tach visas —. Börvärde > 0 och RPM = 0 kan tyda på fel eller saknad sensor.',
+        doc: 'MOBILE_AC.md#hjälpfläktar-och-rpm'
+    },
+    'ac.remote_cmd': {
+        title: 'Fjärrkommando',
+        short: 'IR eller linje till själva AC-aggregatet.',
+        long: 'Ström, kylläge och fläktläge är avsikter som sparas och loggas. När IR-sändare eller relä är inkopplat utförs de fysiskt. Se liknande mönster i Home Assistant IR/climate + ESPHome.',
+        doc: 'MOBILE_AC.md#fjärrkommando'
+    }
+};
+
+function setupHelpSystem() {
+    document.body.addEventListener('click', (e) => {
+        const tip = e.target.closest('.help-tip');
+        if (tip) {
+            e.preventDefault();
+            e.stopPropagation();
+            openHelp(tip.dataset.help);
+            return;
+        }
+        if (e.target.closest('[data-help-close]')) {
+            closeHelp();
+        }
+        const docLink = e.target.closest('.doc-link');
+        if (docLink) {
+            e.preventDefault();
+            openHelp(docLink.dataset.doc === 'MOBILE_AC' ? 'ac.modules_intro' : docLink.dataset.help);
+        }
+    });
+
+    document.body.addEventListener('mouseover', (e) => {
+        const tip = e.target.closest('.help-tip');
+        if (!tip || tip.dataset.tooltipBound) return;
+        const entry = HELP_CATALOG[tip.dataset.help];
+        if (entry?.short) {
+            tip.title = entry.short;
+            tip.dataset.tooltipBound = '1';
+        }
+    });
+}
+
+function openHelp(helpId) {
+    const entry = HELP_CATALOG[helpId];
+    const modal = document.getElementById('help-modal');
+    if (!modal || !entry) return;
+    document.getElementById('help-modal-title').textContent = entry.title || 'Hjälp';
+    const body = document.getElementById('help-modal-body');
+    body.replaceChildren();
+    const p1 = document.createElement('p');
+    p1.textContent = entry.short || '';
+    const p2 = document.createElement('p');
+    p2.textContent = entry.long || '';
+    body.append(p1, p2);
+    const link = document.getElementById('help-modal-doc-link');
+    if (link) {
+        // Embedded docs path for repo; on device this is informational
+        link.href = `https://github.com/itoaa/ThermoFlow/blob/main/docs/${entry.doc || 'MOBILE_AC.md'}`;
+        link.textContent = 'Öppna dokumentation (GitHub)';
+    }
+    modal.classList.remove('profile-hidden');
+}
+
+function closeHelp() {
+    document.getElementById('help-modal')?.classList.add('profile-hidden');
+}
+
+function computeAcMetrics(sensors) {
+    if (!sensors) return null;
+    const Tk = Number(sensors.supply_temp);
+    const Tv = Number(sensors.exhaust_temp);
+    const Tr = Number(sensors.outdoor_temp);
+    const RHk = Number(sensors.supply_rh);
+    const RHv = Number(sensors.exhaust_rh);
+    const coolingDelta = Tr - Tk;
+    const heatReject = Tv - Tr;
+    const balance = coolingDelta > 0.5 ? heatReject / coolingDelta : null;
+    let condRisk = 'Låg';
+    if (RHk >= 85 && Tk <= 16) condRisk = 'Hög';
+    else if (RHk >= 70 && Tk <= 18) condRisk = 'Medel';
+    const index = Math.max(0, Math.min(100, (coolingDelta / 12) * 100));
+    return {
+        Tk, Tv, Tr, RHk, RHv,
+        coolingDelta, heatReject, balance, condRisk, index
+    };
+}
+
+function updateAcOverview(data) {
+    const s = data?.sensors;
+    if (!s) return;
+    const m = computeAcMetrics(s);
+    if (!m) return;
+
+    const set = (id, text) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    };
+
+    set('ac-cold-temp', `${m.Tk.toFixed(1)}°C`);
+    set('ac-cold-rh', `${m.RHk.toFixed(0)}% RH`);
+    set('ac-hot-temp', `${m.Tv.toFixed(1)}°C`);
+    set('ac-hot-rh', `${m.RHv.toFixed(0)}% RH`);
+    set('ac-room-temp', `${m.Tr.toFixed(1)}°C`);
+    set('ac-room-rh', `${Number(s.outdoor_rh).toFixed(0)}% RH`);
+    set('ac-cooling-index', Math.round(m.index).toString());
+    set('ac-metric-cooling-delta', m.coolingDelta.toFixed(1));
+    set('ac-metric-heat-reject', m.heatReject.toFixed(1));
+    set('ac-metric-balance', m.balance == null ? '—' : m.balance.toFixed(2));
+    set('ac-metric-cond-risk', m.condRisk);
+    set('ac-metric-cond-detail', `${m.RHk.toFixed(0)}% RH · ${m.Tk.toFixed(1)}°C`);
+    set('ac-metric-index', Math.round(m.index).toString());
+    set('ac-metric-cold-rh', m.RHk.toFixed(0));
+    const bar = document.getElementById('ac-index-bar');
+    if (bar) bar.style.width = `${Math.round(m.index)}%`;
+}
+
+function isMobileAcProfile(id = state.applicationProfile) {
+    return id === 'ac_monitor' || getProfileConfig(id).isMobileAc;
+}
+
 function profileAllowsView(viewName, profileId = state.applicationProfile) {
     return getProfileConfig(profileId).views.includes(viewName);
 }
 
 function applyApplicationProfile(profileId, options = {}) {
-    const { switchIfNeeded = true } = options;
+    const { switchIfNeeded = true, control = null, capabilities = null } = options;
     const config = getProfileConfig(profileId);
 
     state.applicationProfile = profileId;
     localStorage.setItem('applicationProfile', profileId);
     document.documentElement.dataset.profile = profileId;
 
+    const views = capabilities?.views?.length
+        ? capabilities.views.map(v => (v === 'control' ? 'ftx' : v))
+        : config.views;
+
     document.querySelectorAll('.nav-link[data-view]').forEach(link => {
         const view = link.dataset.view;
-        const allowed = config.views.includes(view);
+        const allowed = views.includes(view);
         link.classList.toggle('profile-hidden', !allowed);
     });
 
+    const navLabel = capabilities?.control_nav_label || config.ftxNavLabel;
     const ftxNavLabel = document.getElementById('nav-ftx-label');
     if (ftxNavLabel) {
-        ftxNavLabel.textContent = config.ftxNavLabel || 'FTX';
+        ftxNavLabel.textContent = navLabel || 'Styrning';
     }
 
     const navFtx = document.getElementById('nav-ftx');
     if (navFtx) {
-        navFtx.querySelector('i').className = profileId === 'heat_exchanger'
-            ? 'fas fa-fan'
-            : 'fas fa-recycle';
+        const icon = profileId === 'heat_exchanger' ? 'fa-fan'
+            : profileId === 'ac_monitor' ? 'fa-snowflake'
+            : profileId === 'mini_ftx' ? 'fa-recycle'
+            : 'fa-sliders-h';
+        navFtx.querySelector('i').className = `fas ${icon}`;
     }
 
     document.getElementById('dashboard-subtitle')?.replaceChildren(
@@ -162,15 +441,66 @@ function applyApplicationProfile(profileId, options = {}) {
     }
 
     document.getElementById('ftx-title')?.replaceChildren(
-        document.createTextNode(config.ftxTitle || 'FTX-system')
+        document.createTextNode(config.ftxTitle || 'Styrning')
     );
     document.getElementById('ftx-subtitle')?.replaceChildren(
         document.createTextNode(config.ftxSubtitle || '')
     );
 
+    const showFtxStats = capabilities?.features?.heat_recovery_stats ?? config.showFtxStats;
+    const showCycle = capabilities?.features?.alternating_cycle ?? config.showCycle;
+    const showPwm = capabilities?.features?.pwm_control ?? config.showPwmFans;
+    const showFan2 = capabilities?.features?.dual_fan ?? config.showFan2;
+    const showAc = (capabilities?.features?.ir_control || capabilities?.features?.electrical_control)
+        ?? config.showAcControls;
+
     document.querySelectorAll('.profile-ftx-only').forEach(el => {
-        el.classList.toggle('profile-hidden', !config.showFtxStats);
+        el.classList.toggle('profile-hidden', !showFtxStats && !showCycle);
     });
+    document.querySelectorAll('.profile-pwm-fans').forEach(el => {
+        el.classList.toggle('profile-hidden', !showPwm);
+    });
+    document.querySelectorAll('.profile-ac-only').forEach(el => {
+        el.classList.toggle('profile-hidden', !showAc);
+    });
+
+    const isAc = isMobileAcProfile(profileId);
+    document.getElementById('mode-panel-ac')?.classList.toggle('profile-hidden', !isAc);
+    document.getElementById('mode-panel-generic')?.classList.toggle('profile-hidden', isAc);
+    document.getElementById('ac-modules-panel')?.classList.toggle('profile-hidden', !isAc);
+
+    if (isAc) {
+        updateAcModulesUi(control?.ac_modules);
+        const hasAct = !!(control?.ac_has_actuation ||
+            control?.ac_modules?.ir_remote ||
+            control?.ac_modules?.line_control ||
+            control?.ac_modules?.assist_fans);
+        document.getElementById('ac-subtab-control')?.classList.toggle('profile-hidden', !hasAct);
+        document.getElementById('ac-ir-line-panel')?.classList.toggle('profile-hidden',
+            !(control?.ac_modules?.ir_remote || control?.ac_modules?.line_control));
+        document.getElementById('ac-assist-fans-panel')?.classList.toggle('profile-hidden',
+            !control?.ac_modules?.assist_fans);
+        if (!hasAct) {
+            switchAcTab('monitor');
+        }
+    }
+
+    const fan2 = document.getElementById('fan2-control');
+    if (fan2) fan2.classList.toggle('profile-hidden', !showFan2);
+
+    if (config.fan1Label) {
+        const el = document.getElementById('fan1-label');
+        if (el) el.textContent = config.fan1Label;
+    }
+    if (config.fan2Label) {
+        const el = document.getElementById('fan2-label');
+        if (el) el.textContent = config.fan2Label;
+    }
+
+    const hint = document.getElementById('control-mode-hint');
+    if (hint && config.controlHint) {
+        hint.textContent = config.controlHint;
+    }
 
     const profileSelect = document.getElementById('application-profile');
     if (profileSelect && profileSelect.value !== profileId) {
@@ -180,14 +510,143 @@ function applyApplicationProfile(profileId, options = {}) {
         document.createTextNode(config.description)
     );
     document.getElementById('profile-active-label')?.replaceChildren(
-        document.createTextNode(`Aktiv profil: ${config.label}`)
+        document.createTextNode(`Aktivt läge: ${config.label}`)
     );
 
-    if (switchIfNeeded && !profileAllowsView(state.currentView, profileId)) {
+    const capList = document.getElementById('profile-capability-list');
+    if (capList) {
+        capList.replaceChildren();
+        (config.capabilitiesSummary || []).forEach(text => {
+            const li = document.createElement('li');
+            li.textContent = text;
+            capList.appendChild(li);
+        });
+    }
+
+    if (control) {
+        applyControlState(control);
+    }
+
+    if (switchIfNeeded && !views.includes(state.currentView)) {
         switchView('dashboard', { skipProfileCheck: true });
     } else if (state.currentView === 'sensors') {
         fetchSensorsDetail();
     }
+}
+
+function applyControlState(control) {
+    if (!control) return;
+    state.control = control;
+
+    const en = document.getElementById('control-enabled');
+    if (en) en.checked = !!control.enabled;
+
+    const mode = control.fan_mode || 'auto';
+    document.querySelectorAll('#fan-mode-toggle .btn-toggle').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+    document.querySelectorAll('#ac-run-mode-toggle .btn-toggle').forEach(btn => {
+        const m = btn.dataset.acRun;
+        btn.classList.toggle('active', m === mode || (mode === 'off' && m === 'manual'));
+    });
+    const manualOnly = mode === 'manual';
+    document.querySelectorAll('.ac-manual-only').forEach(el => {
+        el.classList.toggle('profile-hidden', !manualOnly);
+    });
+
+    const s1 = document.getElementById('supply-fan');
+    const s1v = document.getElementById('supply-fan-value');
+    if (s1 && control.fan1_speed != null) {
+        s1.value = control.fan1_speed;
+        if (s1v) s1v.textContent = `${control.fan1_speed}%`;
+    }
+    const s2 = document.getElementById('exhaust-fan');
+    const s2v = document.getElementById('exhaust-fan-value');
+    if (s2 && control.fan2_speed != null) {
+        s2.value = control.fan2_speed;
+        if (s2v) s2v.textContent = `${control.fan2_speed}%`;
+    }
+    const a1 = document.getElementById('ac-assist-fan1');
+    const a1v = document.getElementById('ac-assist-fan1-value');
+    if (a1 && control.fan1_speed != null) {
+        a1.value = control.fan1_speed;
+        if (a1v) a1v.textContent = `${control.fan1_speed}%`;
+    }
+    const a2 = document.getElementById('ac-assist-fan2');
+    const a2v = document.getElementById('ac-assist-fan2-value');
+    if (a2 && control.fan2_speed != null) {
+        a2.value = control.fan2_speed;
+        if (a2v) a2v.textContent = `${control.fan2_speed}%`;
+    }
+    const cy = document.getElementById('cycle-period');
+    const cyv = document.getElementById('cycle-period-value');
+    if (cy && control.cycle_period_s != null) {
+        cy.value = control.cycle_period_s;
+        if (cyv) cyv.textContent = `${control.cycle_period_s} s`;
+    }
+    const phase = document.getElementById('cycle-phase-label');
+    if (phase && control.cycle_phase) {
+        const map = { idle: 'Viloläge', intake: 'In (tilluft)', exhaust: 'Ut (frånluft)' };
+        phase.textContent = `Fas: ${map[control.cycle_phase] || control.cycle_phase}`;
+    }
+
+    if (control.ac_modules) {
+        updateAcModulesUi(control.ac_modules);
+    }
+
+    const condSel = document.getElementById('ac-cond-action');
+    if (condSel && control.ac_cond_action) {
+        condSel.value = control.ac_cond_action;
+    }
+
+    updateAcControlStatus(control, state.ftx);
+}
+
+function updateAcControlStatus(control, ftxData) {
+    if (!isMobileAcProfile()) return;
+    const runMap = { auto: 'Automatisk', manual: 'Manuell', off: 'Av' };
+    const condMap = {
+        observe: 'Endast övervaka',
+        boost_assist: 'Förstärk fläktar',
+        request_fan_only: 'Begär fläktläge'
+    };
+    const set = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
+    set('ac-status-run-mode', runMap[control?.fan_mode] || control?.fan_mode || '—');
+    set('ac-status-cond-action', condMap[control?.ac_cond_action] || control?.ac_cond_action || '—');
+
+    const m = ftxData?.sensors ? computeAcMetrics(ftxData.sensors) : null;
+    set('ac-status-cond-risk', m?.condRisk || '—');
+    set('ac-status-cooling-index', m ? Math.round(m.index).toString() : '—');
+
+    const last = control?.ac_last_command;
+    set('ac-last-command', last ? `Senaste kommando: ${last}` : 'Senaste kommando: —');
+
+    const fans = control?.assist_fans_status || [];
+    for (let i = 0; i < 2; i++) {
+        const f = fans[i] || {};
+        const n = i + 1;
+        set(`ac-fan${n}-setpoint`, f.setpoint_pct != null ? `${f.setpoint_pct}%` : '—%');
+        set(`ac-fan${n}-rpm`, f.rpm > 0 ? `${f.rpm}` : (f.setpoint_pct > 0 ? '0 (saknas tach?)' : '—'));
+        set(`ac-fan${n}-fault`, f.fault ? 'Fel' : (f.setpoint_pct > 0 && !f.rpm ? 'Ingen feedback' : 'OK'));
+    }
+}
+
+function updateAcModulesUi(mod) {
+    const m = mod || { sensing: true, ir_remote: false, line_control: false, assist_fans: false };
+    const ir = document.getElementById('ac-mod-ir');
+    const line = document.getElementById('ac-mod-line');
+    const assist = document.getElementById('ac-mod-assist');
+    if (ir) ir.checked = !!m.ir_remote;
+    if (line) line.checked = !!m.line_control;
+    if (assist) assist.checked = !!m.assist_fans;
+}
+
+function switchAcTab(tab) {
+    document.querySelectorAll('#ac-subtabs .subtab').forEach(b => {
+        b.classList.toggle('active', b.dataset.acTab === tab);
+    });
+    document.getElementById('ac-tab-monitor')?.classList.toggle('profile-hidden', tab !== 'monitor');
+    document.getElementById('ac-tab-control')?.classList.toggle('profile-hidden', tab !== 'control');
 }
 
 // Chart instances
@@ -206,6 +665,8 @@ function init() {
         if (brand) brand.textContent = 'ThermoFlow Demo';
         showToast('Demo-läge aktivt — simulerad data', 'info');
     }
+
+    setupHelpSystem();
 
     // Apply theme
     applyTheme(state.theme);
@@ -471,11 +932,34 @@ function mockDemoApi(endpoint, options = {}) {
                 },
                 application_profile: state.applicationProfile,
                 application_profile_label: getProfileConfig().label,
-                application_profile_description: getProfileConfig().description
+                application_profile_description: getProfileConfig().description,
+                control: state.control || {
+                    enabled: true, method: 'pwm', fan_mode: 'auto',
+                    fan1_speed: 40, fan2_speed: 40, cycle_period_s: 60, cycle_phase: 'intake'
+                },
+                capabilities: {
+                    views: getProfileConfig().views,
+                    control_nav_label: getProfileConfig().ftxNavLabel,
+                    features: {
+                        heat_recovery_stats: getProfileConfig().showFtxStats,
+                        alternating_cycle: getProfileConfig().showCycle,
+                        dual_fan: getProfileConfig().showFan2,
+                        ir_control: getProfileConfig().showAcControls,
+                        electrical_control: getProfileConfig().showAcControls,
+                        pwm_control: getProfileConfig().showPwmFans,
+                        control_optional: true,
+                        has_control_view: getProfileConfig().views.includes('ftx')
+                    }
+                }
             };
         case '/device/profile':
             if (options.method === 'PUT') {
-                return { success: true, application_profile: state.applicationProfile };
+                return {
+                    success: true,
+                    application_profile: state.applicationProfile,
+                    application_profile_label: getProfileConfig().label,
+                    control: state.control || { enabled: true, method: 'pwm', fan_mode: 'auto', fan1_speed: 40, fan2_speed: 40, cycle_period_s: 60, cycle_phase: 'idle' }
+                };
             }
             return {
                 application_profile: state.applicationProfile,
@@ -644,21 +1128,28 @@ async function fetchFTX() {
     const status = await fetchAPI('/ftx/status');
     
     if (data) {
-        // Update flow diagram
+        if (isMobileAcProfile()) {
+            updateAcOverview(data);
+            if (state.control) {
+                updateAcControlStatus(state.control, data);
+            }
+        }
+
+        // Update flow diagram (FTX/HX)
         if (data.sensors) {
-            document.getElementById('ftx-outdoor-temp').textContent = 
-                `${data.sensors.outdoor_temp.toFixed(1)}°C`;
-            document.getElementById('ftx-supply-temp').textContent = 
-                `${data.sensors.supply_temp.toFixed(1)}°C`;
-            document.getElementById('ftx-extract-temp').textContent = 
-                `${data.sensors.extract_temp.toFixed(1)}°C`;
-            document.getElementById('ftx-exhaust-temp').textContent = 
-                `${data.sensors.exhaust_temp.toFixed(1)}°C`;
+            const o = document.getElementById('ftx-outdoor-temp');
+            if (o) o.textContent = `${data.sensors.outdoor_temp.toFixed(1)}°C`;
+            const s = document.getElementById('ftx-supply-temp');
+            if (s) s.textContent = `${data.sensors.supply_temp.toFixed(1)}°C`;
+            const e = document.getElementById('ftx-extract-temp');
+            if (e) e.textContent = `${data.sensors.extract_temp.toFixed(1)}°C`;
+            const x = document.getElementById('ftx-exhaust-temp');
+            if (x) x.textContent = `${data.sensors.exhaust_temp.toFixed(1)}°C`;
         }
         
         if (data.efficiency) {
-            document.getElementById('ftx-badge').textContent = 
-                `${data.efficiency.percent.toFixed(0)}%`;
+            const badge = document.getElementById('ftx-badge');
+            if (badge) badge.textContent = `${data.efficiency.percent.toFixed(0)}%`;
         }
         
         // Update status badges
@@ -811,7 +1302,11 @@ async function fetchDeviceInfo() {
     }
 
     if (data.application_profile) {
-        applyApplicationProfile(data.application_profile, { switchIfNeeded: false });
+        applyApplicationProfile(data.application_profile, {
+            switchIfNeeded: false,
+            control: data.control,
+            capabilities: data.capabilities
+        });
     }
 }
 
@@ -823,8 +1318,11 @@ async function saveApplicationProfile(profileId) {
     });
 
     if (response?.success || response?.application_profile) {
-        applyApplicationProfile(response.application_profile || profileId);
-        showToast(`Applikation: ${getProfileConfig().label}`, 'success');
+        applyApplicationProfile(response.application_profile || profileId, {
+            control: response.control,
+            capabilities: response.capabilities
+        });
+        showToast(`Läge: ${getProfileConfig().label}`, 'success');
         return true;
     }
 
@@ -834,7 +1332,37 @@ async function saveApplicationProfile(profileId) {
         return true;
     }
 
-    showToast('Kunde inte spara applikationsprofil', 'error');
+    showToast('Kunde inte spara applikationsläge', 'error');
+    return false;
+}
+
+async function saveControlSettings(partial) {
+    const response = await fetchAPI('/device/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(partial)
+    });
+    if (response?.success || response?.control) {
+        applyApplicationProfile(response.application_profile || state.applicationProfile, {
+            switchIfNeeded: false,
+            control: response.control,
+            capabilities: response.capabilities
+        });
+        return true;
+    }
+    if (DEMO_MODE) {
+        state.control = { ...(state.control || {}), ...partial };
+        applyControlState({
+            enabled: partial.control_enabled ?? state.control?.enabled,
+            method: partial.control_method ?? state.control?.method ?? 'none',
+            fan_mode: partial.fan_mode ?? state.control?.fan_mode ?? 'auto',
+            fan1_speed: partial.fan1_speed ?? state.control?.fan1_speed ?? 0,
+            fan2_speed: partial.fan2_speed ?? state.control?.fan2_speed ?? 0,
+            cycle_period_s: partial.cycle_period_s ?? state.control?.cycle_period_s ?? 60,
+            cycle_phase: state.control?.cycle_phase || 'idle'
+        });
+        return true;
+    }
     return false;
 }
 
@@ -1193,56 +1721,152 @@ function updateChart(data) {
     tempChart.update('none');
 }
 
-// Sliders
+// Sliders + control panel
 function setupSliders() {
     const supplyFan = document.getElementById('supply-fan');
     const exhaustFan = document.getElementById('exhaust-fan');
-    
+    const cyclePeriod = document.getElementById('cycle-period');
+    const controlEnabled = document.getElementById('control-enabled');
+    const controlMethod = document.getElementById('control-method');
+
     if (supplyFan) {
         supplyFan.addEventListener('input', (e) => {
             document.getElementById('supply-fan-value').textContent = `${e.target.value}%`;
         });
-        supplyFan.addEventListener('change', (e) => {
-            setFanSpeed('supply', e.target.value);
+        supplyFan.addEventListener('change', async (e) => {
+            const ok = await saveControlSettings({
+                control_enabled: true,
+                fan_mode: 'manual',
+                fan1_speed: parseInt(e.target.value, 10)
+            });
+            showToast(ok ? `Fläkt 1: ${e.target.value}%` : 'Kunde inte spara fläkthastighet',
+                ok ? 'success' : 'error');
         });
     }
-    
+
     if (exhaustFan) {
         exhaustFan.addEventListener('input', (e) => {
             document.getElementById('exhaust-fan-value').textContent = `${e.target.value}%`;
         });
-        exhaustFan.addEventListener('change', (e) => {
-            setFanSpeed('exhaust', e.target.value);
+        exhaustFan.addEventListener('change', async (e) => {
+            const ok = await saveControlSettings({
+                control_enabled: true,
+                fan_mode: 'manual',
+                fan2_speed: parseInt(e.target.value, 10)
+            });
+            showToast(ok ? `Fläkt 2: ${e.target.value}%` : 'Kunde inte spara fläkthastighet',
+                ok ? 'success' : 'error');
         });
     }
-    
-    // Mode toggle
-    document.querySelectorAll('.btn-toggle').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.btn-toggle').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            showToast(`Läge: ${btn.textContent}`, 'info');
+
+    if (cyclePeriod) {
+        cyclePeriod.addEventListener('input', (e) => {
+            document.getElementById('cycle-period-value').textContent = `${e.target.value} s`;
+        });
+        cyclePeriod.addEventListener('change', async (e) => {
+            const ok = await saveControlSettings({ cycle_period_s: parseInt(e.target.value, 10) });
+            showToast(ok ? `Cykel: ${e.target.value} s` : 'Kunde inte spara cykel', ok ? 'success' : 'error');
+        });
+    }
+
+    controlEnabled?.addEventListener('change', async (e) => {
+        const ok = await saveControlSettings({ control_enabled: e.target.checked });
+        showToast(ok
+            ? (e.target.checked ? 'Styrning på' : 'Styrning av — endast mätning')
+            : 'Kunde inte ändra styrning', ok ? 'success' : 'error');
+    });
+
+    controlMethod?.addEventListener('change', async (e) => {
+        const ok = await saveControlSettings({
+            control_method: e.target.value,
+            control_enabled: e.target.value !== 'none'
+        });
+        showToast(ok ? `Styrsätt: ${e.target.value}` : 'Kunde inte spara styrsätt', ok ? 'success' : 'error');
+    });
+
+    document.querySelectorAll('#fan-mode-toggle .btn-toggle').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const mode = btn.dataset.mode;
+            const ok = await saveControlSettings({
+                fan_mode: mode,
+                control_enabled: mode !== 'off'
+            });
+            if (ok) {
+                document.querySelectorAll('#fan-mode-toggle .btn-toggle').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                showToast(`Fläktläge: ${btn.textContent}`, 'success');
+            } else {
+                showToast('Kunde inte byta fläktläge', 'error');
+            }
         });
     });
-}
 
-async function setFanSpeed(fan, speed) {
-    try {
+    const sendAcCmd = async (command, value = 1) => {
         const response = await fetchAPI('/ftx/control', {
             method: 'POST',
-            body: JSON.stringify({
-                command: 'set_fan',
-                fan: fan,
-                value: parseInt(speed)
-            })
+            body: JSON.stringify({ command, value })
         });
-        
-        if (response) {
-            showToast(`${fan === 'supply' ? 'Tillufts' : 'Frånlufts'}fläkt satt till ${speed}%`, 'success');
+        if (response?.control) {
+            applyControlState(response.control);
         }
-    } catch (error) {
-        showToast('Kunde inte ändra fläkthastighet', 'error');
-    }
+        showToast(response ? `Kommando: ${command}` : 'Kunde inte skicka', response ? 'info' : 'error');
+    };
+    document.getElementById('ac-cmd-power')?.addEventListener('click', () => sendAcCmd('power', 1));
+    document.getElementById('ac-cmd-cool')?.addEventListener('click', () => sendAcCmd('cool', 1));
+    document.getElementById('ac-cmd-fan')?.addEventListener('click', () => sendAcCmd('fan_only', 1));
+
+    const bindAssist = (id, valueId, key) => {
+        const el = document.getElementById(id);
+        el?.addEventListener('input', (e) => {
+            const v = document.getElementById(valueId);
+            if (v) v.textContent = `${e.target.value}%`;
+        });
+        el?.addEventListener('change', async (e) => {
+            const body = { fan_mode: 'manual' };
+            body[key] = parseInt(e.target.value, 10);
+            const ok = await saveControlSettings(body);
+            showToast(ok ? 'Manuellt börvärde sparat' : 'Kunde inte spara', ok ? 'success' : 'error');
+        });
+    };
+    bindAssist('ac-assist-fan1', 'ac-assist-fan1-value', 'fan1_speed');
+    bindAssist('ac-assist-fan2', 'ac-assist-fan2-value', 'fan2_speed');
+
+    document.querySelectorAll('#ac-run-mode-toggle .btn-toggle').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const mode = btn.dataset.acRun;
+            const ok = await saveControlSettings({ fan_mode: mode });
+            if (ok) {
+                document.querySelectorAll('#ac-run-mode-toggle .btn-toggle').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                showToast(mode === 'auto' ? 'Automatisk fläktreglering' : 'Manuell fläktreglering', 'success');
+                fetchDeviceInfo();
+            } else {
+                showToast('Kunde inte byta reglerläge', 'error');
+            }
+        });
+    });
+
+    document.getElementById('ac-cond-action')?.addEventListener('change', async (e) => {
+        const ok = await saveControlSettings({ ac_cond_action: e.target.value });
+        showToast(ok ? 'Kondenspolicy sparad' : 'Kunde inte spara policy', ok ? 'success' : 'error');
+        if (ok) fetchDeviceInfo();
+    });
+
+    document.querySelectorAll('#ac-subtabs .subtab').forEach(btn => {
+        btn.addEventListener('click', () => switchAcTab(btn.dataset.acTab));
+    });
+
+    document.getElementById('save-ac-modules')?.addEventListener('click', async () => {
+        const ac_modules = {
+            sensing: true,
+            ir_remote: !!document.getElementById('ac-mod-ir')?.checked,
+            line_control: !!document.getElementById('ac-mod-line')?.checked,
+            assist_fans: !!document.getElementById('ac-mod-assist')?.checked
+        };
+        const ok = await saveControlSettings({ ac_modules });
+        showToast(ok ? 'AC-tillval sparade' : 'Kunde inte spara tillval (kräver läge Mobil AC)', ok ? 'success' : 'error');
+        if (ok) fetchDeviceInfo();
+    });
 }
 
 // Settings

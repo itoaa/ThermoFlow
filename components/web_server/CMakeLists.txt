@@ -20,6 +20,7 @@ idf_component_register(
         ota_manager
         device_profile
         tf_mem
+        fan_control
     EMBED_FILES
         "web/index.html"
         "web/wifi_config.html"
