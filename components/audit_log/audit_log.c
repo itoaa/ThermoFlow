@@ -5,6 +5,7 @@
 
 #include "audit_log.h"
 #include "log_manager.h"
+#include "tf_mem.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -74,15 +75,12 @@ esp_err_t audit_log_init(const audit_log_config_t *config)
         .min_serial_level = TF_LOG_LEVEL_WARN,
         .serial_json = false,
         .nvs_persist = true,
-        .capacity = TF_LOG_DEFAULT_CAPACITY,
+        /* 0 → log_manager picks default / PSRAM-boosted capacity */
+        .capacity = 0,
     };
 
     if (config && config->max_entries > 0) {
-        if (config->max_entries > TF_LOG_DEFAULT_CAPACITY) {
-            lm_cfg.capacity = (uint16_t)config->max_entries;
-        } else {
-            lm_cfg.capacity = (uint16_t)config->max_entries;
-        }
+        lm_cfg.capacity = (uint16_t)config->max_entries;
     }
 
     strncpy(lm_cfg.mqtt_topic, TF_LOG_MQTT_TOPIC, sizeof(lm_cfg.mqtt_topic) - 1);
@@ -184,7 +182,7 @@ esp_err_t audit_log_get_recent(audit_log_entry_t *entries, uint32_t max_entries,
         return ESP_ERR_INVALID_ARG;
     }
 
-    tf_log_entry_t *buf = calloc(max_entries, sizeof(tf_log_entry_t));
+    tf_log_entry_t *buf = tf_mem_calloc(max_entries, sizeof(tf_log_entry_t), TF_MEM_PREFER_PSRAM);
     if (!buf) {
         return ESP_ERR_NO_MEM;
     }
@@ -198,7 +196,7 @@ esp_err_t audit_log_get_recent(audit_log_entry_t *entries, uint32_t max_entries,
         *num_retrieved = count;
     }
 
-    free(buf);
+    tf_mem_free(buf);
     return ret;
 }
 

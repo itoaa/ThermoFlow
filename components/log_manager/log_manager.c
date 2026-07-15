@@ -17,6 +17,7 @@
 #include "freertos/semphr.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "tf_mem.h"
 
 static const char *TAG = "LOG_MGR";
 static const char *NVS_NAMESPACE = "tf_log";
@@ -414,29 +415,32 @@ esp_err_t log_manager_init(const tf_log_config_t *config)
         s_log.config.min_serial_level = TF_LOG_LEVEL_WARN;
         s_log.config.serial_json = false;
         s_log.config.nvs_persist = true;
-        s_log.config.capacity = TF_LOG_DEFAULT_CAPACITY;
+        s_log.config.capacity = 0; /* filled below with PSRAM-aware default */
         strncpy(s_log.config.mqtt_topic, TF_LOG_MQTT_TOPIC, sizeof(s_log.config.mqtt_topic) - 1);
     }
 
+    /* Default capacity: larger ring when optional PSRAM is available (see docs/PSRAM.md) */
     if (s_log.config.capacity == 0) {
-        s_log.config.capacity = TF_LOG_DEFAULT_CAPACITY;
+        s_log.config.capacity = tf_mem_suggested_log_capacity(TF_LOG_DEFAULT_CAPACITY);
     }
 
-    s_log.entries = calloc(s_log.config.capacity, sizeof(tf_log_entry_t));
+    /* Prefer PSRAM for bulk log ring; falls back to internal if PSRAM absent */
+    s_log.entries = tf_mem_calloc(s_log.config.capacity, sizeof(tf_log_entry_t),
+                                  TF_MEM_PREFER_PSRAM);
     if (!s_log.entries) {
         return ESP_ERR_NO_MEM;
     }
 
     s_log.mutex = xSemaphoreCreateMutex();
     if (!s_log.mutex) {
-        free(s_log.entries);
+        tf_mem_free(s_log.entries);
         s_log.entries = NULL;
         return ESP_ERR_NO_MEM;
     }
 
     s_log.sink_queue = xQueueCreate(LOG_SINK_QUEUE_LEN, sizeof(tf_log_entry_t));
     if (!s_log.sink_queue) {
-        free(s_log.entries);
+        tf_mem_free(s_log.entries);
         s_log.entries = NULL;
         vSemaphoreDelete(s_log.mutex);
         s_log.mutex = NULL;
@@ -447,7 +451,7 @@ esp_err_t log_manager_init(const tf_log_config_t *config)
                     &s_log.dispatch_task) != pdPASS) {
         vQueueDelete(s_log.sink_queue);
         s_log.sink_queue = NULL;
-        free(s_log.entries);
+        tf_mem_free(s_log.entries);
         s_log.entries = NULL;
         vSemaphoreDelete(s_log.mutex);
         s_log.mutex = NULL;
@@ -490,7 +494,7 @@ esp_err_t log_manager_deinit(void)
 
     xSemaphoreTake(s_log.mutex, portMAX_DELAY);
     vSemaphoreDelete(s_log.mutex);
-    free(s_log.entries);
+    tf_mem_free(s_log.entries);
     memset(&s_log, 0, sizeof(s_log));
     return ESP_OK;
 }
@@ -687,15 +691,16 @@ static esp_err_t export_entries(bool ndjson, char *buffer, size_t buffer_len, si
         return ESP_ERR_INVALID_ARG;
     }
 
-    tf_log_entry_t *entries = calloc(TF_LOG_DEFAULT_CAPACITY, sizeof(tf_log_entry_t));
+    uint16_t capacity = s_log.config.capacity ? s_log.config.capacity : TF_LOG_DEFAULT_CAPACITY;
+    tf_log_entry_t *entries = tf_mem_calloc(capacity, sizeof(tf_log_entry_t), TF_MEM_PREFER_PSRAM);
     if (!entries) {
         return ESP_ERR_NO_MEM;
     }
 
     uint32_t count = 0;
-    esp_err_t ret = log_manager_get_recent(entries, TF_LOG_DEFAULT_CAPACITY, &count);
+    esp_err_t ret = log_manager_get_recent(entries, capacity, &count);
     if (ret != ESP_OK) {
-        free(entries);
+        tf_mem_free(entries);
         return ret;
     }
 
@@ -756,7 +761,7 @@ static esp_err_t export_entries(bool ndjson, char *buffer, size_t buffer_len, si
     *exported_len = offset;
 
 done:
-    free(entries);
+    tf_mem_free(entries);
     return err;
 }
 

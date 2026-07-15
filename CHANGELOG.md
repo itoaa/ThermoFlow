@@ -13,10 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- HTTP server failed to start after application profiles: URI handler count exceeded `max_uri_handlers` (32) — raised to 48
 - Stack overflow in `sys_evt` when logging from WiFi event handler — sinks now dispatch async
 - Reduced serial log noise (default serial level WARN); NVS persist throttled to WARN+ / audit
 
 ### Added
+- **Optional PSRAM** with stability-first policy (capability allocator only, not default `malloc`)
+- `tf_mem` helpers: prefer PSRAM for bulk non-DMA buffers with internal fallback
+- Live heap/PSRAM stats in `GET /api/device/info` and Inställningar UI
+- Larger log ring (400 entries) when PSRAM is available; 100 without
+- Docs: [PSRAM.md](docs/PSRAM.md)
 - **log_manager** — unified multi-sink logging (serial, web, NVS, MQTT, SD stub)
 - Structured JSON v1 log entries with `boot_id`, `correlation_id`, category, component
 - `GET/PUT /api/logs/config`, `GET /api/logs/export` (NDJSON/JSON)
@@ -30,11 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `wifi_reconnect.html` — wait page during AP+STA fallback (saved credentials)
 - API fields: `wifi_ap_fallback`, `wifi_saved_ssid`, `device_id`, `has_custom_name`
 - `wifi_manager_is_ap_fallback_mode()`, `wifi_manager_get_saved_ssid()`
-- Docs: [WIFI_AND_FLASH.md](docs/WIFI_AND_FLASH.md), [VERSIONING.md](docs/VERSIONING.md)
+- Docs: [WIFI_AND_FLASH.md](docs/WIFI_AND_FLASH.md), [VERSIONING.md](docs/VERSIONING.md), [PSRAM.md](docs/PSRAM.md)
 
 ### Changed
+- IRAM headroom: disable WiFi IRAM opts; place FreeRTOS/ringbuf helpers in flash (`sdkconfig.ci.defaults`)
 - `audit_log` refactored as SR-005 facade over `log_manager`
-- Ring buffer capacity increased to 100 entries
+- Ring buffer capacity: 100 default; 400 when optional PSRAM is available
 - Implemented `audit_log_export_json`, `audit_log_verify`, `audit_log_set_filter`
 - **Flash default is app-flash** (`flash.sh`, `flash-local.ps1`) — NVS/WiFi preserved
 - WiFi credentials dual-written to encrypted + legacy NVS; migration keeps legacy backup

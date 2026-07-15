@@ -19,6 +19,7 @@ idf_component_register(
         wifi_manager
         ota_manager
         device_profile
+        tf_mem
     EMBED_FILES
         "web/index.html"
         "web/wifi_config.html"

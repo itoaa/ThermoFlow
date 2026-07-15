@@ -44,6 +44,8 @@
 #include "ota_manager.h"
 #include "thermoflow_version.h"
 #include "esp_system.h"
+#include "esp_heap_caps.h"
+#include "tf_mem.h"
 
 
 static const char *TAG = "WEB_SERVER";
@@ -867,7 +869,8 @@ esp_err_t web_server_start(void)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = 80;
     config.lru_purge_enable = true;
-    config.max_uri_handlers = 32;
+    /* API handlers + static assets currently need ~33; leave headroom for new routes */
+    config.max_uri_handlers = 48;
     
     esp_err_t err = httpd_start(&http_server, &config);
     if (err != ESP_OK) {
@@ -1663,16 +1666,21 @@ static esp_err_t logs_get_handler(httpd_req_t *req)
     }
     add_security_headers(req);
 
-    audit_log_entry_t *entries = calloc(TF_LOG_DEFAULT_CAPACITY, sizeof(audit_log_entry_t));
+    tf_log_config_t log_cfg = {0};
+    log_manager_get_config(&log_cfg);
+    uint32_t capacity = log_cfg.capacity ? log_cfg.capacity : TF_LOG_DEFAULT_CAPACITY;
+
+    audit_log_entry_t *entries = tf_mem_calloc(capacity, sizeof(audit_log_entry_t),
+                                               TF_MEM_PREFER_PSRAM);
     if (!entries) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
         return ESP_FAIL;
     }
 
     uint32_t count = 0;
-    esp_err_t ret = audit_log_get_recent(entries, TF_LOG_DEFAULT_CAPACITY, &count);
+    esp_err_t ret = audit_log_get_recent(entries, capacity, &count);
     if (ret != ESP_OK) {
-        free(entries);
+        tf_mem_free(entries);
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Log read failed");
         return ESP_FAIL;
     }
@@ -1686,14 +1694,14 @@ static esp_err_t logs_get_handler(httpd_req_t *req)
     for (uint32_t i = 0; i < count; i++) {
         add_log_entry_json(logs, &entries[i], now_us);
     }
-    free(entries);
+    tf_mem_free(entries);
 
     tf_log_stats_t lm_stats = {0};
     log_manager_get_stats(&lm_stats);
 
     cJSON_AddItemToObject(root, "logs", logs);
     cJSON_AddNumberToObject(root, "count", count);
-    cJSON_AddNumberToObject(root, "capacity", TF_LOG_DEFAULT_CAPACITY);
+    cJSON_AddNumberToObject(root, "capacity", capacity);
     cJSON_AddNumberToObject(root, "total_logged", stats.total_entries);
     cJSON_AddNumberToObject(root, "wrap_count", lm_stats.wrap_count);
     cJSON_AddNumberToObject(root, "boot_id", lm_stats.boot_id);
@@ -1997,6 +2005,31 @@ static esp_err_t device_info_handler(httpd_req_t *req)
     add_firmware_version_fields(root);
     cJSON_AddStringToObject(root, "platform", "ESP32-S3");
     cJSON_AddBoolToObject(root, "ota_available", OTA_SERVER_URL[0] != '\0');
+
+    /* Runtime heap / RAM (live — not static link-time sizes) */
+    const size_t free_heap = esp_get_free_heap_size();
+    const size_t min_free_heap = esp_get_minimum_free_heap_size();
+    const size_t largest_free = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    size_t free_internal = 0, total_internal = 0, free_psram = 0, total_psram = 0;
+    bool psram_available = false;
+    tf_mem_get_stats(&free_internal, &total_internal, &free_psram, &total_psram, &psram_available);
+
+    cJSON_AddNumberToObject(root, "free_heap", (double)free_heap);
+    cJSON_AddNumberToObject(root, "min_free_heap", (double)min_free_heap);
+
+    cJSON *memory = cJSON_CreateObject();
+    if (memory) {
+        cJSON_AddNumberToObject(memory, "free_heap", (double)free_heap);
+        cJSON_AddNumberToObject(memory, "min_free_heap", (double)min_free_heap);
+        cJSON_AddNumberToObject(memory, "largest_free_block", (double)largest_free);
+        cJSON_AddNumberToObject(memory, "free_internal", (double)free_internal);
+        cJSON_AddNumberToObject(memory, "total_internal", (double)total_internal);
+        cJSON_AddNumberToObject(memory, "free_psram", (double)free_psram);
+        cJSON_AddNumberToObject(memory, "total_psram", (double)total_psram);
+        cJSON_AddBoolToObject(memory, "psram_available", psram_available);
+        cJSON_AddStringToObject(memory, "psram_policy", "prefer_bulk_only");
+        cJSON_AddItemToObject(root, "memory", memory);
+    }
     
     // Hardware mode
     cJSON_AddBoolToObject(root, "simulation_mode", hardware_is_simulation_mode());

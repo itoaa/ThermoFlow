@@ -449,7 +449,8 @@ void app_main(void)
 
     audit_log_config_t audit_cfg = {
         .storage_path = NULL,
-        .max_entries = 100,
+        /* 0 = auto capacity (larger ring when optional PSRAM is available) */
+        .max_entries = 0,
         .wrap_around = true,
     };
     audit_log_init(&audit_cfg);

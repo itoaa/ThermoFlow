@@ -13,6 +13,34 @@ CONFIG_FREERTOS_HZ=1000
 
 CONFIG_ESP_WIFI_ENABLED=y
 
+# IRAM headroom: WiFi IRAM opts cost ~tens of KB of IRAM for throughput.
+# ThermoFlow is a local sensor/control UI — free IRAM instead (slightly lower WiFi peak).
+# CONFIG_ESP_WIFI_IRAM_OPT is not set
+# CONFIG_ESP_WIFI_RX_IRAM_OPT is not set
+# Move non-ISR FreeRTOS helpers from IRAM into flash
+CONFIG_FREERTOS_PLACE_FUNCTIONS_INTO_FLASH=y
+# CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH can free more IRAM if still tight
+CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH=y
+
+# ============================================
+# PSRAM — optional bulk storage (see docs/PSRAM.md)
+# CAPS_ALLOC only: default malloc/WiFi/stacks stay internal.
+# IGNORE_NOTFOUND: boot without PSRAM if chip missing or mode wrong.
+# ============================================
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_TYPE_AUTO=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_BOOT_INIT=y
+CONFIG_SPIRAM_IGNORE_NOTFOUND=y
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+CONFIG_SPIRAM_MEMTEST=y
+# CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP is not set
+# CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY is not set
+# CONFIG_SPIRAM_FETCH_INSTRUCTIONS is not set
+# CONFIG_SPIRAM_RODATA is not set
+
+
 CONFIG_MQTT_PROTOCOL_311=y
 CONFIG_MQTT_TRANSPORT_SSL=y
 

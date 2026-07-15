@@ -456,6 +456,19 @@ function mockDemoApi(endpoint, options = {}) {
                 ip_address: '127.0.0.1',
                 wifi_state: 'connected',
                 simulation_mode: true,
+                free_heap: 180000,
+                min_free_heap: 140000,
+                memory: {
+                    free_heap: 180000,
+                    min_free_heap: 140000,
+                    largest_free_block: 65536,
+                    free_internal: 120000,
+                    total_internal: 327680,
+                    free_psram: 7 * 1024 * 1024,
+                    total_psram: 8 * 1024 * 1024,
+                    psram_available: true,
+                    psram_policy: 'prefer_bulk_only'
+                },
                 application_profile: state.applicationProfile,
                 application_profile_label: getProfileConfig().label,
                 application_profile_description: getProfileConfig().description
@@ -731,6 +744,52 @@ function formatFirmwareVersion(data) {
     return version;
 }
 
+function formatBytes(bytes) {
+    if (bytes == null || Number.isNaN(Number(bytes))) return '--';
+    const n = Number(bytes);
+    if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+    if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${n} B`;
+}
+
+function updateMemoryInfo(data) {
+    const mem = data.memory || {};
+    const freeHeap = mem.free_heap ?? data.free_heap;
+    const minFree = mem.min_free_heap ?? data.min_free_heap;
+    const largest = mem.largest_free_block;
+    const freeInternal = mem.free_internal;
+    const totalInternal = mem.total_internal;
+    const freePsram = mem.free_psram;
+    const totalPsram = mem.total_psram;
+
+    const freeEl = document.getElementById('free-heap');
+    const minEl = document.getElementById('min-free-heap');
+    const largestEl = document.getElementById('largest-free-block');
+    const internalEl = document.getElementById('internal-ram');
+    const psramEl = document.getElementById('psram-status');
+
+    if (freeEl) freeEl.textContent = formatBytes(freeHeap);
+    if (minEl) minEl.textContent = formatBytes(minFree);
+    if (largestEl) largestEl.textContent = formatBytes(largest);
+    if (internalEl) {
+        if (freeInternal != null && totalInternal != null) {
+            internalEl.textContent = `${formatBytes(freeInternal)} / ${formatBytes(totalInternal)} ledigt`;
+        } else {
+            internalEl.textContent = '--';
+        }
+    }
+    if (psramEl) {
+        const available = mem.psram_available;
+        if (available && totalPsram && totalPsram > 0) {
+            psramEl.textContent = `${formatBytes(freePsram)} / ${formatBytes(totalPsram)} ledigt`;
+        } else if (totalPsram && totalPsram > 0) {
+            psramEl.textContent = `${formatBytes(totalPsram)} (ej initierat)`;
+        } else {
+            psramEl.textContent = 'Ej tillgängligt (kör utan PSRAM)';
+        }
+    }
+}
+
 async function fetchDeviceInfo() {
     const data = await fetchAPI('/device/info');
     if (!data) return;
@@ -744,6 +803,7 @@ async function fetchDeviceInfo() {
     document.getElementById('device-ip').textContent = data.ip_address || '--';
     document.getElementById('wifi-state').textContent =
         wifiStateLabels[data.wifi_state] || wifiStateLabels.unknown;
+    updateMemoryInfo(data);
 
     const nameInput = document.getElementById('device-name-input');
     if (nameInput && document.activeElement !== nameInput) {

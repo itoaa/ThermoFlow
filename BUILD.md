@@ -173,3 +173,4 @@ Each component needs `CMakeLists.txt` with `idf_component_register()`.
 - [BUILD_ESP_IDF.md](BUILD_ESP_IDF.md) — detailed ESP-IDF guide
 - [docs/WIFI_AND_FLASH.md](docs/WIFI_AND_FLASH.md) — WiFi persistence
 - [docs/VERSIONING.md](docs/VERSIONING.md) — CalVer scheme
+- [docs/PSRAM.md](docs/PSRAM.md) — optional PSRAM policy

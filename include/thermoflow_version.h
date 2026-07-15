@@ -12,16 +12,16 @@
 
 #define THERMOFLOW_VERSION_YEAR       2026
 #define THERMOFLOW_VERSION_WEEK       29
-#define THERMOFLOW_VERSION_REVISION   47
+#define THERMOFLOW_VERSION_REVISION   48
 
 #define THERMOFLOW_CALVER_STRING      "2026.29.1"
 #define THERMOFLOW_VERSION_SCHEME     "build"
 
-#define THERMOFLOW_VERSION_STRING     "2026.29.47"
-#define THERMOFLOW_VERSION_FULL       "2026.29.47+f873342"
+#define THERMOFLOW_VERSION_STRING     "2026.29.48"
+#define THERMOFLOW_VERSION_FULL       "2026.29.48+cba6fa2"
 
-#define THERMOFLOW_BUILD_NUMBER       47
-#define THERMOFLOW_GIT_SHA            "f873342"
+#define THERMOFLOW_BUILD_NUMBER       48
+#define THERMOFLOW_GIT_SHA            "cba6fa2"
 #define THERMOFLOW_CHANNEL            "dev"
 
 /** Security version for OTA anti-rollback */
