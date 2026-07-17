@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Blandtemperatur-kontroll och graf (4 temperaturer + kyllyft) i web-UI
 - API skickar `null` + `valid{}` per sensorkanal (UI visar N/A, inte fejkade 0.0)
 - UI-data: Auto/Simulering visar simulerad stream; Sensorer visar riktig data eller N/A; Demo (`?demo=1`) browser-sim
+- **Temperaturhistorik**: slutade nollställas varje poll (profile-apply raderade serien); sparar tidsstämplad historik upp till 24h; intervall **5 min / 10 min / 1h / 6h / 24h**
 - Fasta sensorslots (0–3) så roller inte förskjuts när en sensor saknas
 - **Varmsida intag** (API `outdoor_temp`): neutral för 1-slang (rum) och 2-slang (ute); inte längre kallad “utomhus” i AC-UI
 - Dokumentation: [docs/MOBILE_AC.md](docs/MOBILE_AC.md)

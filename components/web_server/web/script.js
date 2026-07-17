@@ -9,20 +9,36 @@ const DEFAULT_UPDATE_INTERVAL = 5000;
 const DEMO_MODE = new URLSearchParams(window.location.search).has('demo') ||
     localStorage.getItem('thermoflowDemo') === '1';
 
+/** Chart window lengths (ms). History is kept for the longest window. */
+const HISTORY_RANGES_MS = {
+    '5m': 5 * 60 * 1000,
+    '10m': 10 * 60 * 1000,
+    '1h': 60 * 60 * 1000,
+    '6h': 6 * 60 * 60 * 1000,
+    '24h': 24 * 60 * 60 * 1000
+};
+const HISTORY_KEEP_MS = HISTORY_RANGES_MS['24h'];
+const HISTORY_MAX_POINTS = 2000;
+
+function emptyHistoryData() {
+    return {
+        timestamps: [],
+        outdoor: [],
+        indoor: [],
+        extract: [],
+        exhaust: [],
+        coolingDelta: []
+    };
+}
+
 // State
 const state = {
     connected: false,
     currentView: 'dashboard',
     theme: localStorage.getItem('theme') || 'dark',
     updateInterval: parseInt(localStorage.getItem('updateInterval')) || DEFAULT_UPDATE_INTERVAL,
-    historyData: {
-        labels: [],
-        outdoor: [],
-        indoor: [],
-        extract: [],
-        exhaust: [],
-        coolingDelta: []
-    },
+    historyRange: localStorage.getItem('historyRange') || '10m',
+    historyData: emptyHistoryData(),
     dataSource: 'auto',       // auto | simulation | hardware
     simulationMode: false,    // runtime: using simulated sensor stream
     sensors: [],
@@ -612,6 +628,8 @@ function profileAllowsView(viewName, profileId = state.applicationProfile) {
 function applyApplicationProfile(profileId, options = {}) {
     const { switchIfNeeded = true, control = null, capabilities = null } = options;
     const config = getProfileConfig(profileId);
+    const prevProfile = state.applicationProfile;
+    const seriesLayoutChanged = isMobileAcProfile(prevProfile) !== isMobileAcProfile(profileId);
 
     state.applicationProfile = profileId;
     localStorage.setItem('applicationProfile', profileId);
@@ -742,12 +760,13 @@ function applyApplicationProfile(profileId, options = {}) {
         applyControlState(control);
     }
 
-    /* Rebuild dashboard chart so AC gets 4 series vs FTX 2 series */
-    if (tempChart) {
+    /* Rebuild chart only when series layout changes (AC 5-series vs FTX 2-series).
+     * Do NOT wipe history on every poll — fetchDeviceInfo calls this each cycle. */
+    if (seriesLayoutChanged && tempChart) {
         tempChart.destroy();
         tempChart = null;
-        state.historyData = { labels: [], outdoor: [], indoor: [], extract: [], exhaust: [], coolingDelta: [] };
         initChart();
+        syncChartsFromHistory();
     }
 
     if (switchIfNeeded && !views.includes(state.currentView)) {
@@ -915,8 +934,9 @@ function init() {
         fetchAll();
     });
     
-    // Setup chart
+    // Setup chart + history range (5m / 10m / 1h / …)
     initChart();
+    setupHistoryRangeControls();
     
     // Setup sliders
     setupSliders();
@@ -1933,11 +1953,128 @@ function chartThemeColors() {
     };
 }
 
+function chartLineDefaults() {
+    return {
+        tension: 0.3,
+        fill: false,
+        spanGaps: true,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        borderWidth: 2
+    };
+}
+
+function formatHistoryLabel(ts) {
+    const d = new Date(ts);
+    const short = state.historyRange === '5m' || state.historyRange === '10m';
+    return d.toLocaleTimeString('sv-SE', short
+        ? { hour: '2-digit', minute: '2-digit', second: '2-digit' }
+        : { hour: '2-digit', minute: '2-digit' });
+}
+
+function shiftHistorySample() {
+    state.historyData.timestamps.shift();
+    state.historyData.outdoor.shift();
+    state.historyData.indoor.shift();
+    state.historyData.extract.shift();
+    state.historyData.exhaust.shift();
+    state.historyData.coolingDelta.shift();
+}
+
+function pruneHistory() {
+    const cutoff = Date.now() - HISTORY_KEEP_MS;
+    while (state.historyData.timestamps.length > 0 && state.historyData.timestamps[0] < cutoff) {
+        shiftHistorySample();
+    }
+    while (state.historyData.timestamps.length > HISTORY_MAX_POINTS) {
+        shiftHistorySample();
+    }
+}
+
+/** Slice of history visible for the selected range button. */
+function getVisibleHistory() {
+    const rangeMs = HISTORY_RANGES_MS[state.historyRange] || HISTORY_RANGES_MS['10m'];
+    const cutoff = Date.now() - rangeMs;
+    const h = state.historyData;
+    let start = 0;
+    while (start < h.timestamps.length && h.timestamps[start] < cutoff) {
+        start++;
+    }
+    const labels = [];
+    for (let i = start; i < h.timestamps.length; i++) {
+        labels.push(formatHistoryLabel(h.timestamps[i]));
+    }
+    return {
+        labels,
+        outdoor: h.outdoor.slice(start),
+        indoor: h.indoor.slice(start),
+        extract: h.extract.slice(start),
+        exhaust: h.exhaust.slice(start),
+        coolingDelta: h.coolingDelta.slice(start)
+    };
+}
+
+function pushHistoryPoint(sensors, coolingDelta) {
+    const now = Date.now();
+    /* Avoid duplicate points if two fetch paths race within same second */
+    const last = state.historyData.timestamps[state.historyData.timestamps.length - 1];
+    if (last != null && now - last < 400) {
+        return;
+    }
+
+    state.historyData.timestamps.push(now);
+    state.historyData.outdoor.push(toFiniteNumber(sensors?.outdoor_temp));
+    state.historyData.indoor.push(toFiniteNumber(sensors?.supply_temp));
+    state.historyData.extract.push(toFiniteNumber(sensors?.extract_temp));
+    state.historyData.exhaust.push(toFiniteNumber(sensors?.exhaust_temp));
+    state.historyData.coolingDelta.push(toFiniteNumber(coolingDelta));
+    pruneHistory();
+}
+
+function applyHistoryToTempChart(visible) {
+    if (!tempChart || !visible) return;
+    tempChart.data.labels = visible.labels;
+    if (isMobileAcProfile() && tempChart.data.datasets.length >= 5) {
+        tempChart.data.datasets[0].data = visible.indoor;
+        tempChart.data.datasets[1].data = visible.extract;
+        tempChart.data.datasets[2].data = visible.exhaust;
+        tempChart.data.datasets[3].data = visible.outdoor;
+        tempChart.data.datasets[4].data = visible.coolingDelta;
+    } else if (tempChart.data.datasets.length >= 2) {
+        tempChart.data.datasets[0].data = visible.outdoor;
+        tempChart.data.datasets[1].data = visible.indoor;
+    }
+    tempChart.update('none');
+}
+
+function applyHistoryToAcChart(visible) {
+    if (!acTempChart || !visible) return;
+    acTempChart.data.labels = visible.labels;
+    acTempChart.data.datasets[0].data = visible.indoor;
+    acTempChart.data.datasets[1].data = visible.extract;
+    acTempChart.data.datasets[2].data = visible.exhaust;
+    acTempChart.data.datasets[3].data = visible.outdoor;
+    acTempChart.data.datasets[4].data = visible.coolingDelta;
+    acTempChart.update('none');
+}
+
+function syncChartsFromHistory() {
+    const visible = getVisibleHistory();
+    applyHistoryToTempChart(visible);
+    applyHistoryToAcChart(visible);
+}
+
 function initChart() {
     const ctx = document.getElementById('temp-chart');
     if (!ctx || typeof Chart === 'undefined') return;
 
+    if (tempChart) {
+        tempChart.destroy();
+        tempChart = null;
+    }
+
     const { gridColor, textColor } = chartThemeColors();
+    const base = chartLineDefaults();
     const ac = isMobileAcProfile();
 
     tempChart = new Chart(ctx, {
@@ -1946,26 +2083,30 @@ function initChart() {
             labels: [],
             datasets: ac
                 ? [
-                    { label: 'Utgående kall', data: [], borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.08)', tension: 0.35, fill: false, spanGaps: true },
-                    { label: 'Ingående kall', data: [], borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.08)', tension: 0.35, fill: false, spanGaps: true },
-                    { label: 'Utgående varm', data: [], borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.08)', tension: 0.35, fill: false, spanGaps: true },
-                    { label: 'Varmsida intag', data: [], borderColor: '#fb7185', backgroundColor: 'rgba(251,113,133,0.08)', tension: 0.35, fill: false, spanGaps: true },
-                    { label: 'Kyllyft °C', data: [], borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.08)', tension: 0.35, fill: false, spanGaps: true, borderDash: [6, 4] }
+                    { ...base, label: 'Utgående kall', data: [], borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.08)' },
+                    { ...base, label: 'Ingående kall', data: [], borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.08)' },
+                    { ...base, label: 'Utgående varm', data: [], borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.08)' },
+                    { ...base, label: 'Varmsida intag', data: [], borderColor: '#fb7185', backgroundColor: 'rgba(251,113,133,0.08)' },
+                    { ...base, label: 'Kyllyft °C', data: [], borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.08)', borderDash: [6, 4] }
                 ]
                 : [
-                    { label: 'Utomhus', data: [], borderColor: '#4ecdc4', backgroundColor: 'rgba(78, 205, 196, 0.1)', tension: 0.4, fill: true, spanGaps: true },
-                    { label: 'Tilluft / inomhus', data: [], borderColor: '#ff6b6b', backgroundColor: 'rgba(255, 107, 107, 0.1)', tension: 0.4, fill: true, spanGaps: true }
+                    { ...base, label: 'Utomhus', data: [], borderColor: '#4ecdc4', backgroundColor: 'rgba(78, 205, 196, 0.1)', fill: true },
+                    { ...base, label: 'Tilluft / inomhus', data: [], borderColor: '#ff6b6b', backgroundColor: 'rgba(255, 107, 107, 0.1)', fill: true }
                 ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: false,
             interaction: { intersect: false, mode: 'index' },
             plugins: {
                 legend: { labels: { color: textColor } }
             },
             scales: {
-                x: { grid: { color: gridColor }, ticks: { color: textColor } },
+                x: {
+                    grid: { color: gridColor },
+                    ticks: { color: textColor, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }
+                },
                 y: { grid: { color: gridColor }, ticks: { color: textColor } }
             }
         }
@@ -1977,91 +2118,86 @@ function initChart() {
 function initAcChart() {
     const ctx = document.getElementById('ac-temp-chart');
     if (!ctx || typeof Chart === 'undefined') return;
-    if (acTempChart) return;
+
+    if (acTempChart) {
+        acTempChart.destroy();
+        acTempChart = null;
+    }
 
     const { gridColor, textColor } = chartThemeColors();
+    const base = chartLineDefaults();
     acTempChart = new Chart(ctx, {
         type: 'line',
         data: {
             labels: [],
             datasets: [
-                { label: 'Utgående kall', data: [], borderColor: '#38bdf8', tension: 0.35, fill: false, spanGaps: true },
-                { label: 'Ingående kall', data: [], borderColor: '#22d3ee', tension: 0.35, fill: false, spanGaps: true },
-                { label: 'Utgående varm', data: [], borderColor: '#f97316', tension: 0.35, fill: false, spanGaps: true },
-                { label: 'Varmsida intag', data: [], borderColor: '#fb7185', tension: 0.35, fill: false, spanGaps: true },
-                { label: 'Kyllyft °C', data: [], borderColor: '#a78bfa', tension: 0.35, fill: false, spanGaps: true, borderDash: [5, 4] }
+                { ...base, label: 'Utgående kall', data: [], borderColor: '#38bdf8' },
+                { ...base, label: 'Ingående kall', data: [], borderColor: '#22d3ee' },
+                { ...base, label: 'Utgående varm', data: [], borderColor: '#f97316' },
+                { ...base, label: 'Varmsida intag', data: [], borderColor: '#fb7185' },
+                { ...base, label: 'Kyllyft °C', data: [], borderColor: '#a78bfa', borderDash: [5, 4] }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: false,
             interaction: { intersect: false, mode: 'index' },
             plugins: { legend: { labels: { color: textColor } } },
             scales: {
-                x: { grid: { color: gridColor }, ticks: { color: textColor } },
+                x: {
+                    grid: { color: gridColor },
+                    ticks: { color: textColor, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }
+                },
                 y: { grid: { color: gridColor }, ticks: { color: textColor } }
             }
         }
     });
 }
 
-function pushHistoryPoint(sensors, coolingDelta) {
-    const now = new Date().toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
-    state.historyData.labels.push(now);
-    state.historyData.outdoor.push(toFiniteNumber(sensors?.outdoor_temp));
-    state.historyData.indoor.push(toFiniteNumber(sensors?.supply_temp));
-    state.historyData.extract.push(toFiniteNumber(sensors?.extract_temp));
-    state.historyData.exhaust.push(toFiniteNumber(sensors?.exhaust_temp));
-    state.historyData.coolingDelta.push(toFiniteNumber(coolingDelta));
-
-    const maxPts = 60;
-    while (state.historyData.labels.length > maxPts) {
-        state.historyData.labels.shift();
-        state.historyData.outdoor.shift();
-        state.historyData.indoor.shift();
-        state.historyData.extract.shift();
-        state.historyData.exhaust.shift();
-        state.historyData.coolingDelta.shift();
-    }
-}
-
 function updateChart(data) {
-    if (!tempChart || !data?.sensors) return;
+    if (!data?.sensors) return;
+    if (!tempChart) {
+        initChart();
+    }
 
     const sensors = data.sensors;
     const m = isMobileAcProfile() ? computeAcMetrics(sensors) : null;
     pushHistoryPoint(sensors, m?.coolingDelta);
-
-    tempChart.data.labels = state.historyData.labels;
-    if (isMobileAcProfile() && tempChart.data.datasets.length >= 5) {
-        tempChart.data.datasets[0].data = state.historyData.indoor;     // supply = ut kall
-        tempChart.data.datasets[1].data = state.historyData.extract;    // extract = in kall
-        tempChart.data.datasets[2].data = state.historyData.exhaust;    // exhaust = ut varm
-        tempChart.data.datasets[3].data = state.historyData.outdoor;    // outdoor_temp = varmsida intag
-        tempChart.data.datasets[4].data = state.historyData.coolingDelta;
-    } else {
-        tempChart.data.datasets[0].data = state.historyData.outdoor;
-        tempChart.data.datasets[1].data = state.historyData.indoor;
-    }
-    tempChart.update('none');
+    syncChartsFromHistory();
 }
 
 function updateAcChart(sensors, metrics) {
     if (!acTempChart) {
         initAcChart();
     }
-    if (!acTempChart) return;
-
-    /* History already advanced by dashboard chart; just sync datasets */
-    acTempChart.data.labels = state.historyData.labels;
-    acTempChart.data.datasets[0].data = state.historyData.indoor;
-    acTempChart.data.datasets[1].data = state.historyData.extract;
-    acTempChart.data.datasets[2].data = state.historyData.exhaust;
-    acTempChart.data.datasets[3].data = state.historyData.outdoor;
-    acTempChart.data.datasets[4].data = state.historyData.coolingDelta;
-    acTempChart.update('none');
+    /* History is advanced by dashboard updateChart; only re-sync AC canvas */
+    syncChartsFromHistory();
     void sensors;
     void metrics;
+}
+
+function setupHistoryRangeControls() {
+    const root = document.getElementById('history-range-controls');
+    if (!root) return;
+
+    if (!HISTORY_RANGES_MS[state.historyRange]) {
+        state.historyRange = '10m';
+    }
+
+    root.querySelectorAll('[data-range]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.range === state.historyRange);
+        btn.addEventListener('click', () => {
+            const range = btn.dataset.range;
+            if (!HISTORY_RANGES_MS[range]) return;
+            state.historyRange = range;
+            localStorage.setItem('historyRange', range);
+            root.querySelectorAll('[data-range]').forEach(b => {
+                b.classList.toggle('active', b.dataset.range === range);
+            });
+            syncChartsFromHistory();
+        });
+    });
 }
 
 // Sliders + control panel
