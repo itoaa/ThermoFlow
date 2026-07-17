@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Nyckeltal: kyllyft (°C), värmeavgivning, sidobalans, termisk verkningsgrad η, COP-proxy
 - Blandtemperatur-kontroll och graf (4 temperaturer + kyllyft) i web-UI
 - API skickar `null` + `valid{}` per sensorkanal (UI visar N/A, inte fejkade 0.0)
-- UI visar endast riktig data eller N/A, utom i Demo (`?demo=1`) och Simulering/Sin-mode
+- UI-data: Auto/Simulering visar simulerad stream; Sensorer visar riktig data eller N/A; Demo (`?demo=1`) browser-sim
 - Fasta sensorslots (0–3) så roller inte förskjuts när en sensor saknas
 - **Varmsida intag** (API `outdoor_temp`): neutral för 1-slang (rum) och 2-slang (ute); inte längre kallad “utomhus” i AC-UI
 - Dokumentation: [docs/MOBILE_AC.md](docs/MOBILE_AC.md)

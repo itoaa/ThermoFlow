@@ -357,12 +357,20 @@ function closeHelp() {
     document.getElementById('help-modal')?.classList.add('profile-hidden');
 }
 
-/** True when UI may show simulated numbers (browser demo or forced Sin/sim mode). */
+/**
+ * True when UI may show simulated numbers.
+ * - Demo (?demo=1): always
+ * - Simulering: always
+ * - Auto: yes (device may fall back to sim when no sensors)
+ * - Sensorer (hardware): no — only real readings or N/A
+ */
 function allowSyntheticMeasurements() {
-    return DEMO_MODE || state.dataSource === 'simulation';
+    return DEMO_MODE
+        || state.dataSource === 'simulation'
+        || state.dataSource === 'auto';
 }
 
-/** True when the payload is a synthetic stream that should be hidden outside Demo/Sin. */
+/** True when the payload is a synthetic stream (sim/demo), not live sensors. */
 function isSyntheticPayload(data) {
     if (DEMO_MODE) return true;
     if (state.dataSource === 'simulation') return true;
@@ -372,7 +380,8 @@ function isSyntheticPayload(data) {
 
 /**
  * Whether measurement numbers may be shown.
- * Real hardware data always OK; synthetic only in Demo or Simulering.
+ * Auto/Sim/Demo: show stream (sim or real). Hardware: only non-synthetic data.
+ * Per-channel N/A still comes from valid{} / null when a sensor is missing.
  */
 function mayDisplayMeasurements(data) {
     if (allowSyntheticMeasurements()) return true;
@@ -403,7 +412,8 @@ function formatNum(value, digits = 1) {
 
 /**
  * Sanitize sensor object for display: null invalid/missing channels.
- * Hides all synthetic values unless Demo/Sin is active.
+ * Synthetic streams are shown in Auto/Sim/Demo; hardware mode blanks them.
+ * Missing sensors (valid[role]=false or null) become N/A via formatters.
  */
 function sanitizeSensorsForDisplay(sensors, dataMeta = null) {
     if (!sensors || typeof sensors !== 'object') return null;
@@ -1679,11 +1689,11 @@ async function fetchHardwareMode() {
     }
     if (hintEl) {
         if (data.data_source === 'simulation') {
-            hintEl.textContent = 'Simulering (Sin): simulerade värden visas i UI. Byt till Sensorer för endast riktiga mätvärden.';
+            hintEl.textContent = 'Simulering: simulerade värden visas i UI. Byt till Sensorer för endast riktiga mätvärden.';
         } else if (data.data_source === 'hardware') {
-            hintEl.textContent = 'Endast riktiga sensorer. Saknade kanaler visas som N/A (inga fejkade nollor).';
+            hintEl.textContent = 'Endast riktiga sensorer. Saknade eller oläsbara kanaler visas som N/A.';
         } else {
-            hintEl.textContent = 'Auto: riktiga sensorer om de finns. Om systemet faller tillbaka till simulerad data döljs den i UI (visar N/A) — välj Simulering för att se demo-strömmen.';
+            hintEl.textContent = 'Auto: riktiga sensorer om de finns, annars simulerad data. Sensor-läge visar N/A när en sensor saknas.';
         }
     }
 

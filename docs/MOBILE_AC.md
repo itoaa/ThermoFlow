@@ -24,12 +24,14 @@ Målet är att **se hur AC:n presterar** (kyllyft, värmeavgivning, verkningsgra
 
 ### UI-regel för data
 
-Webbgränssnittet visar **endast riktiga mätvärden eller `N/A`**, utom när:
+| Datakälla (Inställningar) | Vad UI visar |
+|---------------------------|--------------|
+| **Auto** | Riktiga sensorer om de finns; annars **simulerad data** (samma stream som Simulering) |
+| **Simulering** | Alltid simulerade värden |
+| **Sensorer** | Endast riktiga mätvärden; saknad/oläsbar kanal → **N/A** |
+| **Demo** (`?demo=1`) | Browser-lokal simulerad stream |
 
-- **Demo-läge** (`?demo=1` i webbläsaren), eller  
-- **Simulering / Sin-mode** (datakälla = *Simulering* under Inställningar).
-
-Auto-fallback till simulerad data (inga sensorer) **döljs** i UI (visas som N/A) så att man inte förväxlar fejkade siffror med mätning. Saknade/ogiltiga kanaler skickas som JSON `null` från API.
+Saknade/ogiltiga kanaler skickas som JSON `null` + `valid{}` från API. I Sensor-läge döljs eventuell simulerad fallback så man inte förväxlar fejkade siffror med mätning.
 
 ---
 
