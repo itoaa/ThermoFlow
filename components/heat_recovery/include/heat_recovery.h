@@ -95,10 +95,19 @@ typedef enum {
  */
 typedef struct {
     // Temperatures (°C)
-    float outdoor_temp;              // Outside air (supply before HX)
-    float supply_temp;               // Supply air (after HX)
-    float exhaust_temp;              // Exhaust air (from room)
-    float extract_temp;              // Extract air (before HX)
+    // Fixed sensor slots: 0=supply, 1=extract, 2=exhaust, 3=outdoor
+    // Mobil AC: supply=kall ut, extract=kall in, exhaust=varm ut,
+    //           outdoor_temp = "Varmsida intag" (1-hose often room air; 2-hose often outdoor)
+    float outdoor_temp;              // FTX: outside air · AC: hot-side inlet (varmsida intag)
+    float supply_temp;               // Supply air / cold-side outlet (AC)
+    float exhaust_temp;              // Exhaust air / hot-side outlet (AC)
+    float extract_temp;              // Extract air / cold-side inlet (AC)
+
+    // Per-channel validity (false → API emits null, UI shows N/A)
+    bool outdoor_valid;
+    bool supply_valid;
+    bool exhaust_valid;
+    bool extract_valid;
     
     // Humidity (%RH)
     float outdoor_rh;

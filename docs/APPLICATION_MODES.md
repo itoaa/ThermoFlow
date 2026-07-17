@@ -112,13 +112,13 @@ Se detaljerad guide: **[MOBILE_AC.md](MOBILE_AC.md)** (samma texter som UI-hjäl
 ### Sensorroller
 | Roll | Visningsnamn |
 |------|----------------|
-| `supply` | Kylutblås |
-| `exhaust` | Kondensorutblås |
-| `outdoor` | Rumsluft |
-| `extract` | Extra mätpunkt |
+| `supply` | Utgående kall luft (kylutblås) |
+| `extract` | Ingående kall luft |
+| `exhaust` | Utgående varm luft (kondensorutblås) |
+| `outdoor` (`outdoor_temp`) | **Varmsida intag** (1-slang ofta rumsluft; 2-slang ofta uteluft) |
 
 ### Nyckeltal (Överblick)
-Kyllyft, värmeavgivning, sidobalans, kondensrisk, kylindex, fukt i kylutblås — se MOBILE_AC.md.
+Kyllyft, värmeavgivning, sidobalans, termisk verkningsgrad, COP-proxy, kondensrisk, kylindex — se MOBILE_AC.md.
 
 ### UI-vyer
 Dashboard · Sensorer · **Mobil AC** (Överblick + ev. Styrning) · Logg · Inställningar

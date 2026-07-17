@@ -127,6 +127,26 @@
                         <span class="stat-unit">W</span>
                     </div>
                 </div>
+                <div class="stat-card profile-ac-only profile-hidden">
+                    <div class="stat-icon efficiency">
+                        <i class="fas fa-snowflake"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="dash-ac-cooling">N/A</span>
+                        <span class="stat-label">Kyllyft</span>
+                        <span class="stat-unit">°C</span>
+                    </div>
+                </div>
+                <div class="stat-card profile-ac-only profile-hidden">
+                    <div class="stat-icon power">
+                        <i class="fas fa-percentage"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="dash-ac-eff">N/A</span>
+                        <span class="stat-label">Termisk verkningsgrad</span>
+                        <span class="stat-unit">%</span>
+                    </div>
+                </div>
             </div>
 
             <!-- Gauges Section -->
@@ -197,64 +217,107 @@
 
                 <div id="ac-tab-monitor" class="ac-tab-panel">
                     <div class="ac-diagram glass-card">
-                        <div class="ac-unit-visual">
+                        <div class="ac-unit-visual ac-unit-4pt">
                             <div class="ac-side cold">
                                 <span class="ac-side-label">Kylsida <button type="button" class="help-tip" data-help="ac.cold_side" aria-label="Hjälp">?</button></span>
-                                <div class="ac-temp" id="ac-cold-temp">--°C</div>
-                                <div class="ac-rh" id="ac-cold-rh">--% RH</div>
-                                <span class="ac-caption">Kylutblås</span>
+                                <div class="ac-point">
+                                    <span class="ac-caption">Ingående (kall)</span>
+                                    <div class="ac-temp" id="ac-cold-in-temp">N/A</div>
+                                    <div class="ac-rh" id="ac-cold-in-rh">N/A</div>
+                                </div>
+                                <div class="ac-point">
+                                    <span class="ac-caption">Utgående (kall)</span>
+                                    <div class="ac-temp" id="ac-cold-out-temp">N/A</div>
+                                    <div class="ac-rh" id="ac-cold-out-rh">N/A</div>
+                                </div>
                             </div>
                             <div class="ac-core">
                                 <i class="fas fa-snowflake"></i>
                                 <span>Portabel AC</span>
-                                <div class="efficiency-badge" id="ac-cooling-index">--</div>
+                                <div class="efficiency-badge" id="ac-cooling-index">N/A</div>
                                 <span class="ac-caption">Kylindex</span>
+                                <div class="ac-core-delta">
+                                    <span class="ac-caption">Kyler</span>
+                                    <strong id="ac-core-cooling-delta">N/A</strong>
+                                </div>
                             </div>
                             <div class="ac-side hot">
                                 <span class="ac-side-label">Varmsida <button type="button" class="help-tip" data-help="ac.hot_side" aria-label="Hjälp">?</button></span>
-                                <div class="ac-temp" id="ac-hot-temp">--°C</div>
-                                <div class="ac-rh" id="ac-hot-rh">--% RH</div>
-                                <span class="ac-caption">Kondensorutblås</span>
+                                <div class="ac-point">
+                                    <span class="ac-caption">Varmsida intag <button type="button" class="help-tip" data-help="ac.hot_in" aria-label="Hjälp">?</button></span>
+                                    <div class="ac-temp" id="ac-hot-in-temp">N/A</div>
+                                    <div class="ac-rh" id="ac-hot-in-rh">N/A</div>
+                                </div>
+                                <div class="ac-point">
+                                    <span class="ac-caption">Utgående varm luft</span>
+                                    <div class="ac-temp" id="ac-hot-out-temp">N/A</div>
+                                    <div class="ac-rh" id="ac-hot-out-rh">N/A</div>
+                                </div>
                             </div>
                         </div>
                         <div class="ac-room-bar">
-                            <span>Rumsluft <button type="button" class="help-tip" data-help="ac.room" aria-label="Hjälp">?</button></span>
-                            <strong id="ac-room-temp">--°C</strong>
-                            <span id="ac-room-rh">--% RH</span>
+                            <span>Blandtemp. ut (kall+varm) <button type="button" class="help-tip" data-help="ac.mixed_out" aria-label="Hjälp">?</button></span>
+                            <strong id="ac-mixed-temp">N/A</strong>
+                            <span id="ac-data-source-badge" class="status-badge inactive">—</span>
+                        </div>
+                    </div>
+
+                    <div class="glass-card chart-card" style="margin-bottom:1rem;">
+                        <div class="card-header">
+                            <h3><i class="fas fa-chart-area"></i> AC temperaturhistorik</h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="ac-temp-chart"></canvas>
                         </div>
                     </div>
 
                     <div class="metrics-grid" id="ac-metrics-grid">
                         <div class="metric-card glass-card">
                             <div class="metric-head">
-                                <span>Kyllyft</span>
+                                <span>Kyllyft (ΔT)</span>
                                 <button type="button" class="help-tip" data-help="ac.cooling_delta" aria-label="Hjälp">?</button>
                             </div>
-                            <div class="metric-value" id="ac-metric-cooling-delta">--</div>
-                            <div class="metric-unit">°C kallare än rum</div>
+                            <div class="metric-value" id="ac-metric-cooling-delta">N/A</div>
+                            <div class="metric-unit">°C (in kall − ut kall)</div>
                         </div>
                         <div class="metric-card glass-card">
                             <div class="metric-head">
                                 <span>Värmeavgivning</span>
                                 <button type="button" class="help-tip" data-help="ac.heat_reject" aria-label="Hjälp">?</button>
                             </div>
-                            <div class="metric-value" id="ac-metric-heat-reject">--</div>
-                            <div class="metric-unit">°C varmare än rum</div>
+                            <div class="metric-value" id="ac-metric-heat-reject">N/A</div>
+                            <div class="metric-unit">°C (ut varm − in varm)</div>
                         </div>
                         <div class="metric-card glass-card">
                             <div class="metric-head">
                                 <span>Sidobalans</span>
                                 <button type="button" class="help-tip" data-help="ac.side_balance" aria-label="Hjälp">?</button>
                             </div>
-                            <div class="metric-value" id="ac-metric-balance">--</div>
-                            <div class="metric-unit">varm ΔT / kyl ΔT</div>
+                            <div class="metric-value" id="ac-metric-balance">N/A</div>
+                            <div class="metric-unit">ΔT varm / ΔT kall</div>
+                        </div>
+                        <div class="metric-card glass-card">
+                            <div class="metric-head">
+                                <span>Termisk verkningsgrad</span>
+                                <button type="button" class="help-tip" data-help="ac.thermal_eff" aria-label="Hjälp">?</button>
+                            </div>
+                            <div class="metric-value" id="ac-metric-thermal-eff">N/A</div>
+                            <div class="metric-unit">% (Qc/Qh, lika massflöde)</div>
+                        </div>
+                        <div class="metric-card glass-card">
+                            <div class="metric-head">
+                                <span>COP-proxy</span>
+                                <button type="button" class="help-tip" data-help="ac.cop_proxy" aria-label="Hjälp">?</button>
+                            </div>
+                            <div class="metric-value" id="ac-metric-cop">N/A</div>
+                            <div class="metric-unit">luftsidig uppskattning</div>
                         </div>
                         <div class="metric-card glass-card">
                             <div class="metric-head">
                                 <span>Kondensrisk</span>
                                 <button type="button" class="help-tip" data-help="ac.cond_risk" aria-label="Hjälp">?</button>
                             </div>
-                            <div class="metric-value" id="ac-metric-cond-risk">--</div>
+                            <div class="metric-value" id="ac-metric-cond-risk">N/A</div>
                             <div class="metric-unit" id="ac-metric-cond-detail">baserat på RH och T</div>
                         </div>
                         <div class="metric-card glass-card">
@@ -262,7 +325,7 @@
                                 <span>Kylindex</span>
                                 <button type="button" class="help-tip" data-help="ac.cooling_index" aria-label="Hjälp">?</button>
                             </div>
-                            <div class="metric-value" id="ac-metric-index">--</div>
+                            <div class="metric-value" id="ac-metric-index">N/A</div>
                             <div class="metric-unit">0–100 just nu</div>
                             <div class="metric-bar"><div class="metric-bar-fill" id="ac-index-bar"></div></div>
                         </div>
@@ -271,13 +334,14 @@
                                 <span>Fukt i kylutblås</span>
                                 <button type="button" class="help-tip" data-help="ac.cold_rh" aria-label="Hjälp">?</button>
                             </div>
-                            <div class="metric-value" id="ac-metric-cold-rh">--</div>
+                            <div class="metric-value" id="ac-metric-cold-rh">N/A</div>
                             <div class="metric-unit">% RH</div>
                         </div>
                     </div>
                     <p class="ota-hint" style="margin-top:12px;">
-                        Definitioner och monteringstips finns i
+                        Definitioner, verkningsgrad och monteringstips finns i
                         <a href="#" class="doc-link" data-doc="MOBILE_AC">dokumentationen för Mobil AC</a>.
+                        UI visar endast riktiga mätvärden eller N/A (undantag: Demo/Simulering).
                     </p>
                 </div>
 
@@ -728,7 +792,7 @@
                             <button class="segment active" data-source="auto">
                                 <i class="fas fa-magic"></i> Auto
                             </button>
-                            <button class="segment" data-source="simulation">
+                            <button class="segment" data-source="simulation" title="Sin-läge: visa simulerade värden">
                                 <i class="fas fa-flask"></i> Simulering
                             </button>
                             <button class="segment" data-source="hardware">

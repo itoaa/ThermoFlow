@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Mobil AC 4-punktsmätning och verkningsgrad
+- Fyra mätpunkter: utgående/ingående kall luft, utgående varm luft, **varmsida intag**
+- Nyckeltal: kyllyft (°C), värmeavgivning, sidobalans, termisk verkningsgrad η, COP-proxy
+- Blandtemperatur-kontroll och graf (4 temperaturer + kyllyft) i web-UI
+- API skickar `null` + `valid{}` per sensorkanal (UI visar N/A, inte fejkade 0.0)
+- UI visar endast riktig data eller N/A, utom i Demo (`?demo=1`) och Simulering/Sin-mode
+- Fasta sensorslots (0–3) så roller inte förskjuts när en sensor saknas
+- **Varmsida intag** (API `outdoor_temp`): neutral för 1-slang (rum) och 2-slang (ute); inte längre kallad “utomhus” i AC-UI
+- Dokumentation: [docs/MOBILE_AC.md](docs/MOBILE_AC.md)
+
+
 ### Fixed
 - HTTP server failed to start after application profiles: URI handler count exceeded `max_uri_handlers` (32) — raised to 48
 - Stack overflow in `sys_evt` when logging from WiFi event handler — sinks now dispatch async

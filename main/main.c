@@ -134,21 +134,29 @@ static void populate_ftx_from_sensors(const sensor_manager_data_t *sensors, heat
         return;
     }
 
-    if (sensors->num_sensors >= 4 && sensors->valid[3]) {
-        ftx->outdoor_temp = sensors->temperature[3];
-        ftx->outdoor_rh = sensors->humidity[3];
-    }
-    if (sensors->num_sensors >= 1 && sensors->valid[0]) {
+    /* Fixed slots: 0=supply, 1=extract, 2=exhaust, 3=outdoor
+     * (AC UI: outdoor = "Varmsida intag", not necessarily outdoor air).
+     * Invalid channels keep previous numbers but valid flags go false so API/UI can N/A. */
+    ftx->supply_valid = (sensors->num_sensors > 0) && sensors->valid[0];
+    ftx->extract_valid = (sensors->num_sensors > 1) && sensors->valid[1];
+    ftx->exhaust_valid = (sensors->num_sensors > 2) && sensors->valid[2];
+    ftx->outdoor_valid = (sensors->num_sensors > 3) && sensors->valid[3];
+
+    if (ftx->supply_valid) {
         ftx->supply_temp = sensors->temperature[0];
         ftx->supply_rh = sensors->humidity[0];
     }
-    if (sensors->num_sensors >= 2 && sensors->valid[1]) {
+    if (ftx->extract_valid) {
         ftx->extract_temp = sensors->temperature[1];
         ftx->extract_rh = sensors->humidity[1];
     }
-    if (sensors->num_sensors >= 3 && sensors->valid[2]) {
+    if (ftx->exhaust_valid) {
         ftx->exhaust_temp = sensors->temperature[2];
         ftx->exhaust_rh = sensors->humidity[2];
+    }
+    if (ftx->outdoor_valid) {
+        ftx->outdoor_temp = sensors->temperature[3];
+        ftx->outdoor_rh = sensors->humidity[3];
     }
 
     ftx->airflow_supply_m3h = 120.0f;

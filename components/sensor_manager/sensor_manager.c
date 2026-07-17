@@ -19,8 +19,10 @@ static const char *TAG = "SENSOR_MGR";
 static sensor_manager_data_t s_last_data = {0};
 static bool s_simulation_mode = false;
 
+/* Fixed role slots: 0=supply, 1=extract, 2=exhaust, 3=outdoor (not packed) */
 static sht4x_handle_t s_sensors[SENSOR_MANAGER_MAX_SENSORS] = {0};
 static uint8_t s_sensor_addrs[SENSOR_MANAGER_MAX_SENSORS] = {0};
+static bool s_slot_active[SENSOR_MANAGER_MAX_SENSORS] = {false};
 static uint8_t s_active_sensor_count = 0;
 
 #define SIM_TEMP_MIN        15.0f
@@ -47,22 +49,28 @@ static void generate_simulated_data(sensor_manager_data_t *data)
 
     memset(data, 0, sizeof(*data));
 
-    /* Demo profile: realistic Swedish FTX scenario with slow daily variation */
+    /* Simulation: slow daily variation. Values map to fixed slots
+     * 0=supply, 1=extract, 2=exhaust, 3=outdoor (AC: varmsida intag). */
     uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
     float day_phase = (float)(now_s % 86400) / 86400.0f * 6.2831853f;
     float hour_wobble = sinf((float)(now_s % 3600) / 3600.0f * 6.2831853f) * 0.4f;
     uint32_t rand_val = esp_random();
     float noise = ((float)(rand_val & 0xFF) / 255.0f - 0.5f) * 0.3f;
 
-    float outdoor_temp = 2.0f + 9.0f * sinf(day_phase - 1.2f) + hour_wobble + noise;
-    float extract_temp = 20.5f + 1.2f * sinf(day_phase + 0.4f) + noise * 0.5f;
-    float exhaust_temp = extract_temp + 1.8f;
-    float supply_temp = outdoor_temp + (exhaust_temp - outdoor_temp) * 0.82f;
+    /* Portable AC-like stream (also usable as FTX demo numbers) */
+    float room = 24.0f + 1.2f * sinf(day_phase + 0.3f) + noise * 0.4f;
+    float extract_temp = room;                                          /* kall in */
+    float supply_temp = room - (9.0f + 2.0f * sinf(day_phase + 1.0f) + noise); /* kall ut */
+    float outdoor_temp = room - 0.4f + hour_wobble * 0.3f;              /* varmsida intag */
+    float exhaust_temp = outdoor_temp + (13.0f + 2.5f * sinf(day_phase) + noise); /* varm ut */
 
-    float outdoor_rh = 78.0f - 18.0f * sinf(day_phase);
-    float extract_rh = 42.0f + 6.0f * sinf(day_phase + 0.8f);
-    float exhaust_rh = extract_rh - 4.0f;
-    float supply_rh = outdoor_rh - 12.0f;
+    float extract_rh = 48.0f + 8.0f * sinf(day_phase + 0.5f);
+    float supply_rh = extract_rh + 22.0f;
+    if (supply_rh > SIM_HUMIDITY_MAX) {
+        supply_rh = SIM_HUMIDITY_MAX;
+    }
+    float outdoor_rh = extract_rh - 2.0f;
+    float exhaust_rh = outdoor_rh - 12.0f;
 
     float temps[4] = {supply_temp, extract_temp, exhaust_temp, outdoor_temp};
     float humidity[4] = {supply_rh, extract_rh, exhaust_rh, outdoor_rh};
@@ -89,6 +97,9 @@ static void generate_simulated_data(sensor_manager_data_t *data)
 static esp_err_t init_hardware_sensors(void)
 {
     s_active_sensor_count = 0;
+    memset(s_slot_active, 0, sizeof(s_slot_active));
+    memset(s_sensors, 0, sizeof(s_sensors));
+    memset(s_sensor_addrs, 0, sizeof(s_sensor_addrs));
 
     for (int i = 0; i < SENSOR_MANAGER_MAX_SENSORS; i++) {
         if (!hardware_is_detected(s_hw_map[i])) {
@@ -104,16 +115,18 @@ static esp_err_t init_hardware_sensors(void)
             .precision = 2,
         };
 
-        esp_err_t err = sht4x_init(&cfg, &s_sensors[s_active_sensor_count]);
+        /* Keep fixed slot index so roles stay supply/extract/exhaust/outdoor */
+        esp_err_t err = sht4x_init(&cfg, &s_sensors[i]);
         if (err != ESP_OK) {
-            ESP_LOGW(TAG, "Failed to init SHT40 at 0x%02X: %s",
-                     s_probe_addrs[i], esp_err_to_name(err));
+            ESP_LOGW(TAG, "Failed to init SHT40 at 0x%02X (slot %d): %s",
+                     s_probe_addrs[i], i, esp_err_to_name(err));
             continue;
         }
 
-        s_sensor_addrs[s_active_sensor_count] = s_probe_addrs[i];
+        s_sensor_addrs[i] = s_probe_addrs[i];
+        s_slot_active[i] = true;
         s_active_sensor_count++;
-        ESP_LOGI(TAG, "SHT40 initialized at 0x%02X (slot %d)", s_probe_addrs[i], i);
+        ESP_LOGI(TAG, "SHT40 initialized at 0x%02X (fixed slot %d)", s_probe_addrs[i], i);
     }
 
     if (s_active_sensor_count == 0) {
@@ -128,7 +141,7 @@ static esp_err_t init_hardware_sensors(void)
     }
 
     s_simulation_mode = false;
-    ESP_LOGI(TAG, "Hardware mode: %d SHT40 sensor(s) active", s_active_sensor_count);
+    ESP_LOGI(TAG, "Hardware mode: %d SHT40 sensor(s) active (fixed slots)", s_active_sensor_count);
     return ESP_OK;
 }
 
@@ -181,21 +194,27 @@ esp_err_t sensor_manager_read_all(sensor_manager_data_t *data)
         return ESP_OK;
     }
 
-    data->num_sensors = s_active_sensor_count;
+    /* Always expose 4 fixed slots; missing/failed sensors stay valid=false */
+    data->num_sensors = SENSOR_MANAGER_MAX_SENSORS;
 
-    for (uint8_t i = 0; i < s_active_sensor_count; i++) {
+    for (uint8_t i = 0; i < SENSOR_MANAGER_MAX_SENSORS; i++) {
+        data->sensor_ids[i] = i;
+        data->valid[i] = false;
+
+        if (!s_slot_active[i]) {
+            continue;
+        }
+
         sht4x_reading_t reading = {0};
         esp_err_t err = sht4x_read(s_sensors[i], &reading, 100);
 
-        data->sensor_ids[i] = i;
         if (err == ESP_OK && reading.valid &&
             validate_reading(reading.temperature, reading.humidity)) {
             data->temperature[i] = reading.temperature;
             data->humidity[i] = reading.humidity;
             data->valid[i] = true;
         } else {
-            data->valid[i] = false;
-            ESP_LOGW(TAG, "Sensor %d (0x%02X) read failed: %s",
+            ESP_LOGW(TAG, "Sensor slot %d (0x%02X) read failed: %s",
                      i, s_sensor_addrs[i], esp_err_to_name(err));
         }
     }
@@ -319,11 +338,13 @@ esp_err_t sensor_manager_get_sensor_by_id(uint8_t sensor_id, float *temp, float 
 
 esp_err_t sensor_manager_deinit(void)
 {
-    for (uint8_t i = 0; i < s_active_sensor_count; i++) {
-        if (s_sensors[i]) {
+    for (uint8_t i = 0; i < SENSOR_MANAGER_MAX_SENSORS; i++) {
+        if (s_slot_active[i] && s_sensors[i]) {
             sht4x_deinit(s_sensors[i]);
             s_sensors[i] = NULL;
         }
+        s_slot_active[i] = false;
+        s_sensor_addrs[i] = 0;
     }
     s_active_sensor_count = 0;
     return ESP_OK;

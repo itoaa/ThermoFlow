@@ -1034,6 +1034,19 @@ bool web_server_get_ftx_data(heat_recovery_data_t *data)
  * API Handlers (with security headers)
  * ============================================ */
 
+/** Add number or JSON null so UI can show N/A instead of fake 0.0 */
+static void cjson_add_sensor_number(cJSON *obj, const char *key, float value, bool valid)
+{
+    if (!obj || !key) {
+        return;
+    }
+    if (valid) {
+        cJSON_AddNumberToObject(obj, key, (double)value);
+    } else {
+        cJSON_AddNullToObject(obj, key);
+    }
+}
+
 static void add_ftx_sensor_fields(cJSON *root, bool include_flat_fields)
 {
     if (!s_ftx_data_valid) {
@@ -1041,14 +1054,21 @@ static void add_ftx_sensor_fields(cJSON *root, bool include_flat_fields)
     }
 
     cJSON *sensors = cJSON_CreateObject();
-    cJSON_AddNumberToObject(sensors, "outdoor_temp", s_ftx_data.outdoor_temp);
-    cJSON_AddNumberToObject(sensors, "outdoor_rh", s_ftx_data.outdoor_rh);
-    cJSON_AddNumberToObject(sensors, "supply_temp", s_ftx_data.supply_temp);
-    cJSON_AddNumberToObject(sensors, "supply_rh", s_ftx_data.supply_rh);
-    cJSON_AddNumberToObject(sensors, "exhaust_temp", s_ftx_data.exhaust_temp);
-    cJSON_AddNumberToObject(sensors, "exhaust_rh", s_ftx_data.exhaust_rh);
-    cJSON_AddNumberToObject(sensors, "extract_temp", s_ftx_data.extract_temp);
-    cJSON_AddNumberToObject(sensors, "extract_rh", s_ftx_data.extract_rh);
+    cjson_add_sensor_number(sensors, "outdoor_temp", s_ftx_data.outdoor_temp, s_ftx_data.outdoor_valid);
+    cjson_add_sensor_number(sensors, "outdoor_rh", s_ftx_data.outdoor_rh, s_ftx_data.outdoor_valid);
+    cjson_add_sensor_number(sensors, "supply_temp", s_ftx_data.supply_temp, s_ftx_data.supply_valid);
+    cjson_add_sensor_number(sensors, "supply_rh", s_ftx_data.supply_rh, s_ftx_data.supply_valid);
+    cjson_add_sensor_number(sensors, "exhaust_temp", s_ftx_data.exhaust_temp, s_ftx_data.exhaust_valid);
+    cjson_add_sensor_number(sensors, "exhaust_rh", s_ftx_data.exhaust_rh, s_ftx_data.exhaust_valid);
+    cjson_add_sensor_number(sensors, "extract_temp", s_ftx_data.extract_temp, s_ftx_data.extract_valid);
+    cjson_add_sensor_number(sensors, "extract_rh", s_ftx_data.extract_rh, s_ftx_data.extract_valid);
+
+    cJSON *valid = cJSON_CreateObject();
+    cJSON_AddBoolToObject(valid, "outdoor", s_ftx_data.outdoor_valid);
+    cJSON_AddBoolToObject(valid, "supply", s_ftx_data.supply_valid);
+    cJSON_AddBoolToObject(valid, "exhaust", s_ftx_data.exhaust_valid);
+    cJSON_AddBoolToObject(valid, "extract", s_ftx_data.extract_valid);
+    cJSON_AddItemToObject(sensors, "valid", valid);
     cJSON_AddItemToObject(root, "sensors", sensors);
 
     cJSON *efficiency = cJSON_CreateObject();
@@ -1063,14 +1083,14 @@ static void add_ftx_sensor_fields(cJSON *root, bool include_flat_fields)
     cJSON_AddItemToObject(root, "fans", fans);
 
     if (include_flat_fields) {
-        cJSON_AddNumberToObject(root, "outdoor_temp", s_ftx_data.outdoor_temp);
-        cJSON_AddNumberToObject(root, "outdoor_rh", s_ftx_data.outdoor_rh);
-        cJSON_AddNumberToObject(root, "supply_temp", s_ftx_data.supply_temp);
-        cJSON_AddNumberToObject(root, "supply_rh", s_ftx_data.supply_rh);
-        cJSON_AddNumberToObject(root, "exhaust_temp", s_ftx_data.exhaust_temp);
-        cJSON_AddNumberToObject(root, "exhaust_rh", s_ftx_data.exhaust_rh);
-        cJSON_AddNumberToObject(root, "extract_temp", s_ftx_data.extract_temp);
-        cJSON_AddNumberToObject(root, "extract_rh", s_ftx_data.extract_rh);
+        cjson_add_sensor_number(root, "outdoor_temp", s_ftx_data.outdoor_temp, s_ftx_data.outdoor_valid);
+        cjson_add_sensor_number(root, "outdoor_rh", s_ftx_data.outdoor_rh, s_ftx_data.outdoor_valid);
+        cjson_add_sensor_number(root, "supply_temp", s_ftx_data.supply_temp, s_ftx_data.supply_valid);
+        cjson_add_sensor_number(root, "supply_rh", s_ftx_data.supply_rh, s_ftx_data.supply_valid);
+        cjson_add_sensor_number(root, "exhaust_temp", s_ftx_data.exhaust_temp, s_ftx_data.exhaust_valid);
+        cjson_add_sensor_number(root, "exhaust_rh", s_ftx_data.exhaust_rh, s_ftx_data.exhaust_valid);
+        cjson_add_sensor_number(root, "extract_temp", s_ftx_data.extract_temp, s_ftx_data.extract_valid);
+        cjson_add_sensor_number(root, "extract_rh", s_ftx_data.extract_rh, s_ftx_data.extract_valid);
         cJSON_AddNumberToObject(root, "efficiency_percent", s_ftx_data.efficiency_percent);
         cJSON_AddNumberToObject(root, "fan_speed_percent", s_ftx_data.fan_speed_current);
     }
@@ -1105,14 +1125,21 @@ static esp_err_t ftx_sensors_handler(httpd_req_t *req)
     cJSON_AddBoolToObject(root, "simulation_mode", hardware_is_simulation_mode());
     
     if (s_ftx_data_valid) {
-        cJSON_AddNumberToObject(root, "outdoor_temp", s_ftx_data.outdoor_temp);
-        cJSON_AddNumberToObject(root, "outdoor_rh", s_ftx_data.outdoor_rh);
-        cJSON_AddNumberToObject(root, "supply_temp", s_ftx_data.supply_temp);
-        cJSON_AddNumberToObject(root, "supply_rh", s_ftx_data.supply_rh);
-        cJSON_AddNumberToObject(root, "exhaust_temp", s_ftx_data.exhaust_temp);
-        cJSON_AddNumberToObject(root, "exhaust_rh", s_ftx_data.exhaust_rh);
-        cJSON_AddNumberToObject(root, "extract_temp", s_ftx_data.extract_temp);
-        cJSON_AddNumberToObject(root, "extract_rh", s_ftx_data.extract_rh);
+        cjson_add_sensor_number(root, "outdoor_temp", s_ftx_data.outdoor_temp, s_ftx_data.outdoor_valid);
+        cjson_add_sensor_number(root, "outdoor_rh", s_ftx_data.outdoor_rh, s_ftx_data.outdoor_valid);
+        cjson_add_sensor_number(root, "supply_temp", s_ftx_data.supply_temp, s_ftx_data.supply_valid);
+        cjson_add_sensor_number(root, "supply_rh", s_ftx_data.supply_rh, s_ftx_data.supply_valid);
+        cjson_add_sensor_number(root, "exhaust_temp", s_ftx_data.exhaust_temp, s_ftx_data.exhaust_valid);
+        cjson_add_sensor_number(root, "exhaust_rh", s_ftx_data.exhaust_rh, s_ftx_data.exhaust_valid);
+        cjson_add_sensor_number(root, "extract_temp", s_ftx_data.extract_temp, s_ftx_data.extract_valid);
+        cjson_add_sensor_number(root, "extract_rh", s_ftx_data.extract_rh, s_ftx_data.extract_valid);
+
+        cJSON *valid = cJSON_CreateObject();
+        cJSON_AddBoolToObject(valid, "outdoor", s_ftx_data.outdoor_valid);
+        cJSON_AddBoolToObject(valid, "supply", s_ftx_data.supply_valid);
+        cJSON_AddBoolToObject(valid, "exhaust", s_ftx_data.exhaust_valid);
+        cJSON_AddBoolToObject(valid, "extract", s_ftx_data.extract_valid);
+        cJSON_AddItemToObject(root, "valid", valid);
     }
     
     // Add pin configuration info

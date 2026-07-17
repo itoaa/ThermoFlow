@@ -18,8 +18,13 @@ const state = {
     historyData: {
         labels: [],
         outdoor: [],
-        indoor: []
+        indoor: [],
+        extract: [],
+        exhaust: [],
+        coolingDelta: []
     },
+    dataSource: 'auto',       // auto | simulation | hardware
+    simulationMode: false,    // runtime: using simulated sensor stream
     sensors: [],
     fans: [],
     ftx: null,
@@ -99,23 +104,24 @@ const APPLICATION_PROFILES = {
     },
     ac_monitor: {
         label: 'Mobil AC',
-        description: 'Portabel AC: mät kylutblås och kondensor. Valfria tillval: IR-fjärr, linjestyrning, hjälpfläktar.',
+        description: 'Portabel AC: fyra mätpunkter (kall in/ut, varm in/ut). Valfria tillval: IR-fjärr, linjestyrning, hjälpfläktar.',
         views: ['dashboard', 'sensors', 'ftx', 'logs', 'settings'],
         ftxNavLabel: 'Mobil AC',
         dashboardSubtitle: 'Kylprestanda och temperaturer för din AC',
-        sensorsSubtitle: 'Kylutblås, kondensorutblås och rumsluft',
-        gaugeOutdoor: 'Kylutblås',
-        gaugeIndoor: 'Kondensorutblås',
+        sensorsSubtitle: 'Utgående/ingående kall- och varmsida',
+        gaugeOutdoor: 'Utgående kall luft',
+        gaugeIndoor: 'Utgående varm luft',
         ftxTitle: 'Mobil AC',
-        ftxSubtitle: 'Överblick av kyla, värmeavgivning och fukt',
+        ftxSubtitle: 'Fyra mätpunkter · kyllyft · verkningsgrad',
         controlHint: 'Aktivera tillval under Inställningar, sedan styrning här.',
         fan1Label: 'Hjälpfläkt 1',
         fan2Label: 'Hjälpfläkt 2',
         sensors: [
-            { name: 'Kylutblås', icon: 'snowflake', tempKey: 'supply_temp', rhKey: 'supply_rh' },
-            { name: 'Kondensorutblås', icon: 'fire', tempKey: 'exhaust_temp', rhKey: 'exhaust_rh' },
-            { name: 'Rumsluft', icon: 'home', tempKey: 'outdoor_temp', rhKey: 'outdoor_rh' },
-            { name: 'Extra mätpunkt', icon: 'thermometer-half', tempKey: 'extract_temp', rhKey: 'extract_rh' }
+            { name: 'Utgående kall luft', icon: 'snowflake', tempKey: 'supply_temp', rhKey: 'supply_rh', role: 'supply' },
+            { name: 'Ingående kall luft', icon: 'wind', tempKey: 'extract_temp', rhKey: 'extract_rh', role: 'extract' },
+            { name: 'Utgående varm luft', icon: 'fire', tempKey: 'exhaust_temp', rhKey: 'exhaust_rh', role: 'exhaust' },
+            /* Slot outdoor_temp: FTX=ute; Mobil AC=varmsida intag (1-slang ofta rum, 2-slang ofta ute) */
+            { name: 'Varmsida intag', icon: 'sign-in-alt', tempKey: 'outdoor_temp', rhKey: 'outdoor_rh', role: 'hot_in' }
         ],
         gaugePrimary: { tempKey: 'supply_temp', rhKey: 'supply_rh' },
         gaugeSecondary: { tempKey: 'exhaust_temp', rhKey: 'exhaust_rh' },
@@ -126,10 +132,9 @@ const APPLICATION_PROFILES = {
         showAcControls: true,
         isMobileAc: true,
         capabilitiesSummary: [
-            'Sensorövervakning (alltid)',
-            'Valfri IR-fjärr / linjestyrning',
-            'Valfria hjälpfläktar',
-            'Nyckeltal: kyllyft, sidobalans, kondensrisk'
+            '4 mätpunkter (kall/varm in+ut)',
+            'Kyllyft, COP-proxy, verkningsgrad',
+            'Valfri IR / linje / hjälpfläktar'
         ]
     },
     sensor_only: {
@@ -194,40 +199,58 @@ const HELP_CATALOG = {
         doc: 'MOBILE_AC.md#hjälpfläktar'
     },
     'ac.cold_side': {
-        title: 'Kylsida / kylutblås',
-        short: 'Kall luft från AC in i rummet.',
-        long: 'Mät i kalluftsströmmen (supply). Lägre än rumstemperatur betyder aktiv kyla. Se monteringstips i dokumentationen.',
-        doc: 'MOBILE_AC.md#kylutblås'
+        title: 'Kylsida (in + ut)',
+        short: 'Ingående och utgående luft på kalla sidan.',
+        long: 'Ingående kalluft (extract) tas in till förångaren; utgående kalluft (supply/kylutblås) blåses ut i rummet. Skillnaden är kyllyftet i luftströmmen.',
+        doc: 'MOBILE_AC.md#sensorplacering'
     },
     'ac.hot_side': {
-        title: 'Varmsida / kondensorutblås',
-        short: 'Värme som pumpas bort från rummet.',
-        long: 'Mät i varm slang eller kondensorutblås (exhaust). Hög temperatur visar att värme avges – viktigt att den går dit den ska.',
-        doc: 'MOBILE_AC.md#kondensorutblås'
+        title: 'Varmsida (intag + ut)',
+        short: 'Varmsida intag och utgående varm luft.',
+        long: 'Varmsida intag = luft in till kondensorn (API-slot outdoor_temp). Vid 1-slangars AC är det oftast rumsluft; vid 2-slangars oftast uteluft. Utgående varm luft (exhaust) lämnar via slang. Skillnaden är värmeavgivningen. Mät blandad bulktemp i utblåset.',
+        doc: 'MOBILE_AC.md#sensorplacering'
     },
-    'ac.room': {
-        title: 'Rumsluft',
-        short: 'Referenstemperatur i rummet.',
-        long: 'Används för att räkna kyllyft och värmeavgivning. Placera ca 1,5 m upp, bort från drag och sol.',
-        doc: 'MOBILE_AC.md#rumsluft'
+    'ac.hot_in': {
+        title: 'Varmsida intag',
+        short: 'Luft in till kondensorn — inte nödvändigtvis utomhus.',
+        long: 'Neutral mätpunkt för varmsidans intag. 1-slang: ofta rumsluft som sugs in till kondensorn. 2-slang: oftast uteluft via separat intagsslang. Används som T_varm_in i värmeavgivning och COP-proxy. API-nyckeln är outdoor_temp (delas med FTX-lägets uteluft-slot).',
+        doc: 'MOBILE_AC.md#varmsida-intag'
+    },
+    'ac.mixed_out': {
+        title: 'Blandtemperatur ut',
+        short: 'Medel av kall ut och varm ut.',
+        long: 'T_mix ≈ (T_kall_ut + T_varm_ut) / 2. Används som snabb kontroll: vid rimlig energibalans bör blandtemperaturen ligga nära genomsnittlig intagstemperatur plus kompressorvärme. Avvikelse kan tyda på ojämnt massflöde eller dålig sensormontering i utblåset.',
+        doc: 'MOBILE_AC.md#blandtemperatur-och-verkningsgrad'
     },
     'ac.cooling_delta': {
         title: 'Kyllyft (ΔT)',
-        short: 'Hur mycket kallare utblåset är än rummet.',
-        long: 'Kyllyft = rumsluft − kylutblås (°C). Stort värde ≈ tydlig kyleffekt. Nära noll kan betyda avstängd AC, fläktläge eller fel sensormontering.',
+        short: 'Hur många grader luftströmmen kyls.',
+        long: 'Kyllyft = T_kall_in − T_kall_ut (°C). Det är den direkta “hur många grader den kyler”-mätningen i strömmen. Saknas kallingång används varmingång som fallback-referens.',
         doc: 'MOBILE_AC.md#kyllyft-δt'
     },
     'ac.heat_reject': {
         title: 'Värmeavgivning (ΔT)',
-        short: 'Hur mycket varmare kondensorluften är än rummet.',
-        long: 'Värmeavgivning = kondensorutblås − rumsluft (°C). Visar att värme flyttas ut. Låg avgivning vid högt kyllyft kan tyda på mätfel.',
+        short: 'Hur mycket luften värms på varmsidan.',
+        long: 'Värmeavgivning = T_varm_ut − T_varmsida_intag (°C). Visar att värme pumpas bort. Varmsida intag är inte nödvändigtvis utomhus (1-slang ofta rum). Mät blandad bulktemperatur i utblåset.',
         doc: 'MOBILE_AC.md#värmeavgivning-δt'
     },
     'ac.side_balance': {
         title: 'Sidobalans',
         short: 'Förhållande mellan varm ΔT och kyl ΔT.',
-        long: 'Ungefär värmeavgivning / kyllyft när kyllyft > 0,5 °C. Inte fabriks-COP, men en snabb hälsokoll på mätpunkter och flöde.',
+        long: 'ΔT_varm / ΔT_kall när kyllyft > 0,5 °C. Vid ungefär lika massflöde brukar värdet ligga > 1 eftersom kompressorarbete också blir värme på varmsidan.',
         doc: 'MOBILE_AC.md#sidobalans'
+    },
+    'ac.thermal_eff': {
+        title: 'Termisk verkningsgrad',
+        short: 'Andel av avgiven värme som kommer från kyla.',
+        long: 'η = ΔT_kall / ΔT_varm × 100 % (antag lika massflöde). Högre värde betyder att mer av varmsidans värme kommer från kyleffekten. Inte elektrisk COP, men en bra hälsokoll utan elmätare.',
+        doc: 'MOBILE_AC.md#blandtemperatur-och-verkningsgrad'
+    },
+    'ac.cop_proxy': {
+        title: 'COP-proxy (luftsidig)',
+        short: 'Uppskattad kyleffekt per tillförd “kompressorvärme”.',
+        long: 'COP ≈ ΔT_kall / (ΔT_varm − ΔT_kall) när ΔT_varm > ΔT_kall. Bygger på energibalans: Q_varm ≈ Q_kall + W. Kräver att massflödena är ungefär lika och att utgående varmuft mäts som blandad bulktemperatur. Inte samma sak som fabrikens COP (som kräver eleffekt).',
+        doc: 'MOBILE_AC.md#blandtemperatur-och-verkningsgrad'
     },
     'ac.cond_risk': {
         title: 'Kondensrisk',
@@ -334,53 +357,238 @@ function closeHelp() {
     document.getElementById('help-modal')?.classList.add('profile-hidden');
 }
 
-function computeAcMetrics(sensors) {
-    if (!sensors) return null;
-    const Tk = Number(sensors.supply_temp);
-    const Tv = Number(sensors.exhaust_temp);
-    const Tr = Number(sensors.outdoor_temp);
-    const RHk = Number(sensors.supply_rh);
-    const RHv = Number(sensors.exhaust_rh);
-    const coolingDelta = Tr - Tk;
-    const heatReject = Tv - Tr;
-    const balance = coolingDelta > 0.5 ? heatReject / coolingDelta : null;
-    let condRisk = 'Låg';
-    if (RHk >= 85 && Tk <= 16) condRisk = 'Hög';
-    else if (RHk >= 70 && Tk <= 18) condRisk = 'Medel';
-    const index = Math.max(0, Math.min(100, (coolingDelta / 12) * 100));
+/** True when UI may show simulated numbers (browser demo or forced Sin/sim mode). */
+function allowSyntheticMeasurements() {
+    return DEMO_MODE || state.dataSource === 'simulation';
+}
+
+/** True when the payload is a synthetic stream that should be hidden outside Demo/Sin. */
+function isSyntheticPayload(data) {
+    if (DEMO_MODE) return true;
+    if (state.dataSource === 'simulation') return true;
+    if (data?.simulation_mode || data?.mode === 'SIMULATION') return true;
+    return false;
+}
+
+/**
+ * Whether measurement numbers may be shown.
+ * Real hardware data always OK; synthetic only in Demo or Simulering.
+ */
+function mayDisplayMeasurements(data) {
+    if (allowSyntheticMeasurements()) return true;
+    if (isSyntheticPayload(data)) return false;
+    return true;
+}
+
+function toFiniteNumber(value) {
+    if (value == null || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+}
+
+function formatTempC(value) {
+    const n = toFiniteNumber(value);
+    return n == null ? 'N/A' : `${n.toFixed(1)}°C`;
+}
+
+function formatRh(value) {
+    const n = toFiniteNumber(value);
+    return n == null ? 'N/A' : `${n.toFixed(0)}% RH`;
+}
+
+function formatNum(value, digits = 1) {
+    const n = toFiniteNumber(value);
+    return n == null ? 'N/A' : n.toFixed(digits);
+}
+
+/**
+ * Sanitize sensor object for display: null invalid/missing channels.
+ * Hides all synthetic values unless Demo/Sin is active.
+ */
+function sanitizeSensorsForDisplay(sensors, dataMeta = null) {
+    if (!sensors || typeof sensors !== 'object') return null;
+    if (!mayDisplayMeasurements(dataMeta || { simulation_mode: state.simulationMode })) {
+        return {
+            outdoor_temp: null, outdoor_rh: null,
+            supply_temp: null, supply_rh: null,
+            extract_temp: null, extract_rh: null,
+            exhaust_temp: null, exhaust_rh: null
+        };
+    }
+
+    const valid = sensors.valid || {};
+    const pick = (key, role) => {
+        const roleOk = valid[role];
+        if (roleOk === false) return null;
+        return toFiniteNumber(sensors[key]);
+    };
+
     return {
-        Tk, Tv, Tr, RHk, RHv,
-        coolingDelta, heatReject, balance, condRisk, index
+        outdoor_temp: pick('outdoor_temp', 'outdoor'),
+        outdoor_rh: pick('outdoor_rh', 'outdoor'),
+        supply_temp: pick('supply_temp', 'supply'),
+        supply_rh: pick('supply_rh', 'supply'),
+        extract_temp: pick('extract_temp', 'extract'),
+        extract_rh: pick('extract_rh', 'extract'),
+        exhaust_temp: pick('exhaust_temp', 'exhaust'),
+        exhaust_rh: pick('exhaust_rh', 'exhaust')
     };
 }
 
-function updateAcOverview(data) {
-    const s = data?.sensors;
-    if (!s) return;
-    const m = computeAcMetrics(s);
-    if (!m) return;
+/**
+ * Mobil AC metrics from four-point measurements.
+ *
+ * Mapping (API keys):
+ *   supply  = utgående kall luft
+ *   extract = ingående kall luft
+ *   exhaust = utgående varm luft
+ *   outdoor_temp slot = varmsida intag (1-slang ofta rum; 2-slang ofta ute)
+ *
+ * Energy-balance COP proxy (equal mass-flow assumption):
+ *   Q ∝ m·cp·ΔT  →  COP ≈ ΔT_c / (ΔT_h − ΔT_c) when ΔT_h > ΔT_c
+ * Thermal effectiveness:
+ *   η = ΔT_c / ΔT_h  (share of rejected heat that came from cooling)
+ * Mixed outlet check:
+ *   T_mix = (T_kall_ut + T_varm_ut) / 2
+ */
+function computeAcMetrics(sensors) {
+    if (!sensors) return null;
 
-    const set = (id, text) => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = text;
+    const TkOut = toFiniteNumber(sensors.supply_temp);
+    const TkIn = toFiniteNumber(sensors.extract_temp);
+    const TvOut = toFiniteNumber(sensors.exhaust_temp);
+    const TvIn = toFiniteNumber(sensors.outdoor_temp);
+    const RHk = toFiniteNumber(sensors.supply_rh);
+    const RHv = toFiniteNumber(sensors.exhaust_rh);
+    const RHkIn = toFiniteNumber(sensors.extract_rh);
+    const RHvIn = toFiniteNumber(sensors.outdoor_rh);
+
+    let coolingDelta = null;
+    if (TkIn != null && TkOut != null) {
+        coolingDelta = TkIn - TkOut;
+    } else if (TvIn != null && TkOut != null) {
+        /* Fallback: use hot-side inlet (often room air) as reference */
+        coolingDelta = TvIn - TkOut;
+    }
+
+    let heatReject = null;
+    if (TvOut != null && TvIn != null) {
+        heatReject = TvOut - TvIn;
+    }
+
+    const balance = (coolingDelta != null && coolingDelta > 0.5 && heatReject != null)
+        ? heatReject / coolingDelta
+        : null;
+
+    /* η = Qc/Qh under equal mass flow */
+    let thermalEff = null;
+    if (coolingDelta != null && heatReject != null && heatReject > 0.3) {
+        thermalEff = Math.max(0, Math.min(150, (coolingDelta / heatReject) * 100));
+    }
+
+    /* COP_proxy = Qc / W, W ≈ Qh − Qc */
+    let copProxy = null;
+    if (coolingDelta != null && heatReject != null && heatReject > coolingDelta + 0.3 && coolingDelta > 0) {
+        copProxy = coolingDelta / (heatReject - coolingDelta);
+        if (copProxy < 0 || copProxy > 20) copProxy = null;
+    }
+
+    let mixedOut = null;
+    if (TkOut != null && TvOut != null) {
+        mixedOut = (TkOut + TvOut) / 2;
+    }
+
+    let condRisk = null;
+    if (RHk != null && TkOut != null) {
+        condRisk = 'Låg';
+        if (RHk >= 85 && TkOut <= 16) condRisk = 'Hög';
+        else if (RHk >= 70 && TkOut <= 18) condRisk = 'Medel';
+    }
+
+    let index = null;
+    if (coolingDelta != null) {
+        index = Math.max(0, Math.min(100, (coolingDelta / 12) * 100));
+    }
+
+    return {
+        TkOut, TkIn, TvOut, TvIn, RHk, RHv, RHkIn, RHvIn,
+        coolingDelta, heatReject, balance, thermalEff, copProxy, mixedOut,
+        condRisk, index
     };
+}
 
-    set('ac-cold-temp', `${m.Tk.toFixed(1)}°C`);
-    set('ac-cold-rh', `${m.RHk.toFixed(0)}% RH`);
-    set('ac-hot-temp', `${m.Tv.toFixed(1)}°C`);
-    set('ac-hot-rh', `${m.RHv.toFixed(0)}% RH`);
-    set('ac-room-temp', `${m.Tr.toFixed(1)}°C`);
-    set('ac-room-rh', `${Number(s.outdoor_rh).toFixed(0)}% RH`);
-    set('ac-cooling-index', Math.round(m.index).toString());
-    set('ac-metric-cooling-delta', m.coolingDelta.toFixed(1));
-    set('ac-metric-heat-reject', m.heatReject.toFixed(1));
-    set('ac-metric-balance', m.balance == null ? '—' : m.balance.toFixed(2));
-    set('ac-metric-cond-risk', m.condRisk);
-    set('ac-metric-cond-detail', `${m.RHk.toFixed(0)}% RH · ${m.Tk.toFixed(1)}°C`);
-    set('ac-metric-index', Math.round(m.index).toString());
-    set('ac-metric-cold-rh', m.RHk.toFixed(0));
+function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+}
+
+function updateAcOverview(data) {
+    const raw = data?.sensors || data;
+    const s = sanitizeSensorsForDisplay(raw, data);
+    const m = computeAcMetrics(s);
+
+    const synthetic = isSyntheticPayload(data) && allowSyntheticMeasurements();
+    const badge = document.getElementById('ac-data-source-badge');
+    if (badge) {
+        if (DEMO_MODE) {
+            badge.textContent = 'Demo';
+            badge.className = 'status-badge warning';
+        } else if (state.dataSource === 'simulation' || (data?.simulation_mode && allowSyntheticMeasurements())) {
+            badge.textContent = 'Simulering';
+            badge.className = 'status-badge warning';
+        } else if (!mayDisplayMeasurements(data)) {
+            badge.textContent = 'Ingen riktig data';
+            badge.className = 'status-badge warning';
+        } else {
+            badge.textContent = 'Live';
+            badge.className = 'status-badge ok';
+        }
+    }
+
+    if (!m) {
+        ['ac-cold-in-temp', 'ac-cold-out-temp', 'ac-hot-in-temp', 'ac-hot-out-temp',
+            'ac-cold-in-rh', 'ac-cold-out-rh', 'ac-hot-in-rh', 'ac-hot-out-rh',
+            'ac-cooling-index', 'ac-core-cooling-delta', 'ac-mixed-temp',
+            'ac-metric-cooling-delta', 'ac-metric-heat-reject', 'ac-metric-balance',
+            'ac-metric-thermal-eff', 'ac-metric-cop', 'ac-metric-cond-risk',
+            'ac-metric-index', 'ac-metric-cold-rh'].forEach(id => setText(id, 'N/A'));
+        setText('ac-metric-cond-detail', 'ingen data');
+        const bar = document.getElementById('ac-index-bar');
+        if (bar) bar.style.width = '0%';
+        return;
+    }
+
+    setText('ac-cold-in-temp', formatTempC(m.TkIn));
+    setText('ac-cold-in-rh', formatRh(m.RHkIn));
+    setText('ac-cold-out-temp', formatTempC(m.TkOut));
+    setText('ac-cold-out-rh', formatRh(m.RHk));
+    setText('ac-hot-in-temp', formatTempC(m.TvIn));
+    setText('ac-hot-in-rh', formatRh(m.RHvIn));
+    setText('ac-hot-out-temp', formatTempC(m.TvOut));
+    setText('ac-hot-out-rh', formatRh(m.RHv));
+
+    setText('ac-cooling-index', m.index == null ? 'N/A' : Math.round(m.index).toString());
+    setText('ac-core-cooling-delta', m.coolingDelta == null ? 'N/A' : `${m.coolingDelta.toFixed(1)} °C`);
+    setText('ac-mixed-temp', formatTempC(m.mixedOut));
+
+    setText('ac-metric-cooling-delta', formatNum(m.coolingDelta, 1));
+    setText('ac-metric-heat-reject', formatNum(m.heatReject, 1));
+    setText('ac-metric-balance', m.balance == null ? 'N/A' : m.balance.toFixed(2));
+    setText('ac-metric-thermal-eff', m.thermalEff == null ? 'N/A' : `${m.thermalEff.toFixed(0)}%`);
+    setText('ac-metric-cop', m.copProxy == null ? 'N/A' : m.copProxy.toFixed(2));
+    setText('ac-metric-cond-risk', m.condRisk == null ? 'N/A' : m.condRisk);
+    setText('ac-metric-cond-detail',
+        m.RHk != null && m.TkOut != null
+            ? `${m.RHk.toFixed(0)}% RH · ${m.TkOut.toFixed(1)}°C`
+            : 'saknar kalluftsmätning');
+    setText('ac-metric-index', m.index == null ? 'N/A' : Math.round(m.index).toString());
+    setText('ac-metric-cold-rh', m.RHk == null ? 'N/A' : m.RHk.toFixed(0));
+
     const bar = document.getElementById('ac-index-bar');
-    if (bar) bar.style.width = `${Math.round(m.index)}%`;
+    if (bar) bar.style.width = `${m.index == null ? 0 : Math.round(m.index)}%`;
+
+    updateAcChart(s, m);
+    void synthetic;
 }
 
 function isMobileAcProfile(id = state.applicationProfile) {
@@ -451,20 +659,17 @@ function applyApplicationProfile(profileId, options = {}) {
     const showCycle = capabilities?.features?.alternating_cycle ?? config.showCycle;
     const showPwm = capabilities?.features?.pwm_control ?? config.showPwmFans;
     const showFan2 = capabilities?.features?.dual_fan ?? config.showFan2;
-    const showAc = (capabilities?.features?.ir_control || capabilities?.features?.electrical_control)
-        ?? config.showAcControls;
+    const isAc = isMobileAcProfile(profileId);
 
     document.querySelectorAll('.profile-ftx-only').forEach(el => {
         el.classList.toggle('profile-hidden', !showFtxStats && !showCycle);
     });
+    document.querySelectorAll('.profile-ac-only').forEach(el => {
+        el.classList.toggle('profile-hidden', !isAc);
+    });
     document.querySelectorAll('.profile-pwm-fans').forEach(el => {
         el.classList.toggle('profile-hidden', !showPwm);
     });
-    document.querySelectorAll('.profile-ac-only').forEach(el => {
-        el.classList.toggle('profile-hidden', !showAc);
-    });
-
-    const isAc = isMobileAcProfile(profileId);
     document.getElementById('mode-panel-ac')?.classList.toggle('profile-hidden', !isAc);
     document.getElementById('mode-panel-generic')?.classList.toggle('profile-hidden', isAc);
     document.getElementById('ac-modules-panel')?.classList.toggle('profile-hidden', !isAc);
@@ -525,6 +730,14 @@ function applyApplicationProfile(profileId, options = {}) {
 
     if (control) {
         applyControlState(control);
+    }
+
+    /* Rebuild dashboard chart so AC gets 4 series vs FTX 2 series */
+    if (tempChart) {
+        tempChart.destroy();
+        tempChart = null;
+        state.historyData = { labels: [], outdoor: [], indoor: [], extract: [], exhaust: [], coolingDelta: [] };
+        initChart();
     }
 
     if (switchIfNeeded && !views.includes(state.currentView)) {
@@ -614,9 +827,12 @@ function updateAcControlStatus(control, ftxData) {
     set('ac-status-run-mode', runMap[control?.fan_mode] || control?.fan_mode || '—');
     set('ac-status-cond-action', condMap[control?.ac_cond_action] || control?.ac_cond_action || '—');
 
-    const m = ftxData?.sensors ? computeAcMetrics(ftxData.sensors) : null;
-    set('ac-status-cond-risk', m?.condRisk || '—');
-    set('ac-status-cooling-index', m ? Math.round(m.index).toString() : '—');
+    const sensors = ftxData?.sensors
+        ? sanitizeSensorsForDisplay(ftxData.sensors, ftxData)
+        : null;
+    const m = computeAcMetrics(sensors);
+    set('ac-status-cond-risk', m?.condRisk || 'N/A');
+    set('ac-status-cooling-index', m?.index == null ? 'N/A' : Math.round(m.index).toString());
 
     const last = control?.ac_last_command;
     set('ac-last-command', last ? `Senaste kommando: ${last}` : 'Senaste kommando: —');
@@ -651,6 +867,7 @@ function switchAcTab(tab) {
 
 // Chart instances
 let tempChart = null;
+let acTempChart = null;
 let pollTimer = null;
 
 // Initialize on page load
@@ -814,18 +1031,37 @@ function generateDemoFtxPayload() {
     const dayPhase = ((now % 86400) / 86400) * Math.PI * 2;
     const hourWobble = Math.sin(((now % 3600) / 3600) * Math.PI * 2) * 0.4;
     const noise = (Math.random() - 0.5) * 0.3;
+    const acMode = state.applicationProfile === 'ac_monitor';
 
-    const outdoorTemp = 2 + 9 * Math.sin(dayPhase - 1.2) + hourWobble + noise;
-    const extractTemp = 20.5 + 1.2 * Math.sin(dayPhase + 0.4) + noise * 0.5;
-    const exhaustTemp = extractTemp + 1.8;
-    const supplyTemp = outdoorTemp + (exhaustTemp - outdoorTemp) * 0.82;
+    let outdoorTemp, extractTemp, exhaustTemp, supplyTemp;
+    let outdoorRh, extractRh, exhaustRh, supplyRh;
 
-    const outdoorRh = 78 - 18 * Math.sin(dayPhase);
-    const extractRh = 42 + 6 * Math.sin(dayPhase + 0.8);
-    const exhaustRh = extractRh - 4;
-    const supplyRh = outdoorRh - 12;
+    if (acMode) {
+        /* Mobile AC demo: cold in/out + hot in/out */
+        const room = 24.5 + 1.2 * Math.sin(dayPhase + 0.3) + noise * 0.4;
+        extractTemp = room;                         // kall in (rumsluft till förångare)
+        supplyTemp = room - (9 + 2.5 * Math.sin(dayPhase + 1.1) + noise); // kall ut
+        outdoorTemp = room - 0.5 + hourWobble * 0.3; // varm in (ofta rumsluft)
+        exhaustTemp = outdoorTemp + (14 + 3 * Math.sin(dayPhase) + noise); // varm ut
+        extractRh = 48 + 8 * Math.sin(dayPhase + 0.5);
+        supplyRh = Math.min(95, extractRh + 25 + 5 * Math.sin(dayPhase));
+        outdoorRh = extractRh - 2;
+        exhaustRh = Math.max(20, outdoorRh - 15);
+    } else {
+        outdoorTemp = 2 + 9 * Math.sin(dayPhase - 1.2) + hourWobble + noise;
+        extractTemp = 20.5 + 1.2 * Math.sin(dayPhase + 0.4) + noise * 0.5;
+        exhaustTemp = extractTemp + 1.8;
+        supplyTemp = outdoorTemp + (exhaustTemp - outdoorTemp) * 0.82;
+        outdoorRh = 78 - 18 * Math.sin(dayPhase);
+        extractRh = 42 + 6 * Math.sin(dayPhase + 0.8);
+        exhaustRh = extractRh - 4;
+        supplyRh = outdoorRh - 12;
+    }
+
     const efficiency = Math.max(0, Math.min(100,
-        ((supplyTemp - outdoorTemp) / (exhaustTemp - outdoorTemp)) * 100));
+        Math.abs(exhaustTemp - outdoorTemp) > 0.1
+            ? ((supplyTemp - outdoorTemp) / (exhaustTemp - outdoorTemp)) * 100
+            : 0));
     const fanSpeed = 35 + Math.round(15 * Math.sin(dayPhase + 0.6));
 
     return {
@@ -840,11 +1076,12 @@ function generateDemoFtxPayload() {
             extract_temp: extractTemp,
             extract_rh: extractRh,
             exhaust_temp: exhaustTemp,
-            exhaust_rh: exhaustRh
+            exhaust_rh: exhaustRh,
+            valid: { outdoor: true, supply: true, exhaust: true, extract: true }
         },
         efficiency: {
             percent: efficiency,
-            power_recovered_w: Math.max(0, (supplyTemp - outdoorTemp) * 18),
+            power_recovered_w: Math.max(0, Math.abs(supplyTemp - outdoorTemp) * 18),
             airflow_m3h: 120
         },
         fans: {
@@ -992,9 +1229,18 @@ function mockDemoApi(endpoint, options = {}) {
 function normalizeFtxData(data) {
     if (!data) return null;
     if (data.valid === false) return null;
-    if (data.valid && data.sensors) return data;
+    if (data.valid && data.sensors) {
+        if (typeof data.simulation_mode === 'boolean') {
+            state.simulationMode = data.simulation_mode;
+        }
+        return data;
+    }
 
-    if (data.outdoor_temp !== undefined) {
+    if (data.outdoor_temp !== undefined || data.supply_temp !== undefined ||
+        data.extract_temp !== undefined || data.exhaust_temp !== undefined) {
+        if (typeof data.simulation_mode === 'boolean') {
+            state.simulationMode = data.simulation_mode;
+        }
         return {
             valid: true,
             simulation_mode: data.simulation_mode,
@@ -1007,7 +1253,8 @@ function normalizeFtxData(data) {
                 extract_temp: data.extract_temp,
                 extract_rh: data.extract_rh,
                 exhaust_temp: data.exhaust_temp,
-                exhaust_rh: data.exhaust_rh
+                exhaust_rh: data.exhaust_rh,
+                valid: data.valid && typeof data.valid === 'object' ? data.valid : undefined
             },
             efficiency: {
                 percent: data.efficiency_percent || 0,
@@ -1086,34 +1333,58 @@ async function fetchDashboard() {
     state.ftx = data;
     
     const profile = getProfileConfig();
-    if (data.sensors) {
-        const primaryTemp = data.sensors[profile.gaugePrimary.tempKey];
-        const secondaryTemp = data.sensors[profile.gaugeSecondary.tempKey];
-        const primaryRh = data.sensors[profile.gaugePrimary.rhKey];
+    const sensors = sanitizeSensorsForDisplay(data.sensors, data);
+    if (sensors) {
+        const primaryTemp = sensors[profile.gaugePrimary.tempKey];
+        const secondaryTemp = sensors[profile.gaugeSecondary.tempKey];
+        const primaryRh = sensors[profile.gaugePrimary.rhKey];
 
         updateGauge('outdoor-temp', primaryTemp, '°C');
         updateGauge('indoor-temp', secondaryTemp, '°C');
         updateGauge('humidity', primaryRh, '%');
 
-        document.getElementById('avg-temp').textContent =
-            ((primaryTemp + secondaryTemp) / 2).toFixed(1);
-        document.getElementById('avg-humidity').textContent = primaryRh.toFixed(1);
+        const avgEl = document.getElementById('avg-temp');
+        const humEl = document.getElementById('avg-humidity');
+        if (avgEl) {
+            if (primaryTemp != null && secondaryTemp != null) {
+                avgEl.textContent = ((primaryTemp + secondaryTemp) / 2).toFixed(1);
+            } else if (primaryTemp != null) {
+                avgEl.textContent = primaryTemp.toFixed(1);
+            } else {
+                avgEl.textContent = 'N/A';
+            }
+        }
+        if (humEl) {
+            humEl.textContent = primaryRh == null ? 'N/A' : primaryRh.toFixed(1);
+        }
     }
     
-    if (data.efficiency) {
-        document.getElementById('ftx-efficiency').textContent = data.efficiency.percent.toFixed(1);
-    }
-    
-    if (data.efficiency && data.efficiency.power_recovered_w) {
-        document.getElementById('power-saved').textContent =
-            Math.round(data.efficiency.power_recovered_w);
-    } else if (data.fans) {
-        document.getElementById('power-saved').textContent =
-            Math.round(data.fans.supply * 0.5);
+    const effEl = document.getElementById('ftx-efficiency');
+    const powerEl = document.getElementById('power-saved');
+    if (isMobileAcProfile() && sensors) {
+        const m = computeAcMetrics(sensors);
+        const coolEl = document.getElementById('dash-ac-cooling');
+        const acEffEl = document.getElementById('dash-ac-eff');
+        if (coolEl) coolEl.textContent = m?.coolingDelta == null ? 'N/A' : m.coolingDelta.toFixed(1);
+        if (acEffEl) acEffEl.textContent = m?.thermalEff == null ? 'N/A' : m.thermalEff.toFixed(0);
+    } else {
+        if (effEl && data.efficiency && mayDisplayMeasurements(data)) {
+            effEl.textContent = toFiniteNumber(data.efficiency.percent) == null
+                ? 'N/A' : data.efficiency.percent.toFixed(1);
+        } else if (effEl) {
+            effEl.textContent = 'N/A';
+        }
+        if (powerEl && data.efficiency && data.efficiency.power_recovered_w != null && mayDisplayMeasurements(data)) {
+            powerEl.textContent = Math.round(data.efficiency.power_recovered_w);
+        } else if (powerEl && data.fans && mayDisplayMeasurements(data)) {
+            powerEl.textContent = Math.round(data.fans.supply * 0.5);
+        } else if (powerEl) {
+            powerEl.textContent = 'N/A';
+        }
     }
     
     // Update chart
-    updateChart(data);
+    updateChart({ ...data, sensors: sensors || data.sensors });
 }
 
 async function fetchSensors() {
@@ -1135,21 +1406,26 @@ async function fetchFTX() {
             }
         }
 
+        const sensors = sanitizeSensorsForDisplay(data.sensors, data);
         // Update flow diagram (FTX/HX)
-        if (data.sensors) {
+        if (sensors) {
             const o = document.getElementById('ftx-outdoor-temp');
-            if (o) o.textContent = `${data.sensors.outdoor_temp.toFixed(1)}°C`;
+            if (o) o.textContent = formatTempC(sensors.outdoor_temp);
             const s = document.getElementById('ftx-supply-temp');
-            if (s) s.textContent = `${data.sensors.supply_temp.toFixed(1)}°C`;
+            if (s) s.textContent = formatTempC(sensors.supply_temp);
             const e = document.getElementById('ftx-extract-temp');
-            if (e) e.textContent = `${data.sensors.extract_temp.toFixed(1)}°C`;
+            if (e) e.textContent = formatTempC(sensors.extract_temp);
             const x = document.getElementById('ftx-exhaust-temp');
-            if (x) x.textContent = `${data.sensors.exhaust_temp.toFixed(1)}°C`;
+            if (x) x.textContent = formatTempC(sensors.exhaust_temp);
         }
         
-        if (data.efficiency) {
+        if (data.efficiency && mayDisplayMeasurements(data)) {
             const badge = document.getElementById('ftx-badge');
-            if (badge) badge.textContent = `${data.efficiency.percent.toFixed(0)}%`;
+            const pct = toFiniteNumber(data.efficiency.percent);
+            if (badge) badge.textContent = pct == null ? 'N/A' : `${pct.toFixed(0)}%`;
+        } else {
+            const badge = document.getElementById('ftx-badge');
+            if (badge) badge.textContent = 'N/A';
         }
         
         // Update status badges
@@ -1169,12 +1445,13 @@ async function fetchSensorsDetail() {
     const container = document.getElementById('sensors-detail-grid');
     container.innerHTML = '';
 
+    const sanitized = sanitizeSensorsForDisplay(data, data);
     const layout = getProfileConfig().sensors;
     const sensors = layout.map(sensor => ({
         name: sensor.name,
         icon: sensor.icon,
-        temp: data[sensor.tempKey],
-        rh: data[sensor.rhKey]
+        temp: sanitized ? sanitized[sensor.tempKey] : null,
+        rh: sanitized ? sanitized[sensor.rhKey] : null
     }));
     
     sensors.forEach(sensor => {
@@ -1193,11 +1470,11 @@ async function fetchSensorsDetail() {
             <div class="sensor-data-grid">
                 <div class="sensor-data-item">
                     <div class="sensor-data-label">Temperatur</div>
-                    <div class="sensor-data-value">${sensor.temp.toFixed(1)}°C</div>
+                    <div class="sensor-data-value">${sensor.temp == null ? 'N/A' : `${sensor.temp.toFixed(1)}°C`}</div>
                 </div>
                 <div class="sensor-data-item">
                     <div class="sensor-data-label">Fuktighet</div>
-                    <div class="sensor-data-value">${sensor.rh.toFixed(1)}%</div>
+                    <div class="sensor-data-value">${sensor.rh == null ? 'N/A' : `${sensor.rh.toFixed(1)}%`}</div>
                 </div>
             </div>
         `;
@@ -1383,6 +1660,13 @@ async function fetchHardwareMode() {
     const data = await fetchAPI('/hardware/mode');
     if (!data) return;
 
+    if (data.data_source) {
+        state.dataSource = data.data_source;
+    }
+    if (typeof data.simulation_mode === 'boolean') {
+        state.simulationMode = data.simulation_mode;
+    }
+
     const statusEl = document.getElementById('sensor-mode-status');
     const countEl = document.getElementById('sensor-count');
     const hintEl = document.getElementById('sensor-mode-hint');
@@ -1395,11 +1679,11 @@ async function fetchHardwareMode() {
     }
     if (hintEl) {
         if (data.data_source === 'simulation') {
-            hintEl.textContent = 'Simulerad sensordata används oavsett om sensorer är anslutna.';
+            hintEl.textContent = 'Simulering (Sin): simulerade värden visas i UI. Byt till Sensorer för endast riktiga mätvärden.';
         } else if (data.data_source === 'hardware') {
-            hintEl.textContent = 'Endast riktiga sensorer används. Utan sensorer blir avläsningarna ogiltiga.';
+            hintEl.textContent = 'Endast riktiga sensorer. Saknade kanaler visas som N/A (inga fejkade nollor).';
         } else {
-            hintEl.textContent = 'Auto använder riktiga sensorer om de finns, annars simulerad data.';
+            hintEl.textContent = 'Auto: riktiga sensorer om de finns. Om systemet faller tillbaka till simulerad data döljs den i UI (visar N/A) — välj Simulering för att se demo-strömmen.';
         }
     }
 
@@ -1612,9 +1896,9 @@ function updateConnectionStatus() {
 
 function updateGauge(id, value, unit) {
     const element = document.getElementById(`${id}-value`);
-    if (element) {
-        element.textContent = `${value.toFixed(1)}${unit}`;
-    }
+    if (!element) return;
+    const n = toFiniteNumber(value);
+    element.textContent = n == null ? 'N/A' : `${n.toFixed(1)}${unit}`;
 }
 
 function updateStatusBadge(id, isActive, activeText, inactiveText, type = null) {
@@ -1631,94 +1915,143 @@ function updateStatusBadge(id, isActive, activeText, inactiveText, type = null) 
 }
 
 // Chart Functions
+function chartThemeColors() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    return {
+        gridColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+        textColor: isDark ? '#a0a0b0' : '#666'
+    };
+}
+
 function initChart() {
     const ctx = document.getElementById('temp-chart');
-    if (!ctx) return;
-    
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const gridColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
-    const textColor = isDark ? '#a0a0b0' : '#666';
-    
+    if (!ctx || typeof Chart === 'undefined') return;
+
+    const { gridColor, textColor } = chartThemeColors();
+    const ac = isMobileAcProfile();
+
     tempChart = new Chart(ctx, {
         type: 'line',
         data: {
             labels: [],
+            datasets: ac
+                ? [
+                    { label: 'Utgående kall', data: [], borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.08)', tension: 0.35, fill: false, spanGaps: true },
+                    { label: 'Ingående kall', data: [], borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.08)', tension: 0.35, fill: false, spanGaps: true },
+                    { label: 'Utgående varm', data: [], borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.08)', tension: 0.35, fill: false, spanGaps: true },
+                    { label: 'Varmsida intag', data: [], borderColor: '#fb7185', backgroundColor: 'rgba(251,113,133,0.08)', tension: 0.35, fill: false, spanGaps: true },
+                    { label: 'Kyllyft °C', data: [], borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.08)', tension: 0.35, fill: false, spanGaps: true, borderDash: [6, 4] }
+                ]
+                : [
+                    { label: 'Utomhus', data: [], borderColor: '#4ecdc4', backgroundColor: 'rgba(78, 205, 196, 0.1)', tension: 0.4, fill: true, spanGaps: true },
+                    { label: 'Tilluft / inomhus', data: [], borderColor: '#ff6b6b', backgroundColor: 'rgba(255, 107, 107, 0.1)', tension: 0.4, fill: true, spanGaps: true }
+                ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
+            plugins: {
+                legend: { labels: { color: textColor } }
+            },
+            scales: {
+                x: { grid: { color: gridColor }, ticks: { color: textColor } },
+                y: { grid: { color: gridColor }, ticks: { color: textColor } }
+            }
+        }
+    });
+
+    initAcChart();
+}
+
+function initAcChart() {
+    const ctx = document.getElementById('ac-temp-chart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    if (acTempChart) return;
+
+    const { gridColor, textColor } = chartThemeColors();
+    acTempChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
             datasets: [
-                {
-                    label: 'Utomhus',
-                    data: [],
-                    borderColor: '#4ecdc4',
-                    backgroundColor: 'rgba(78, 205, 196, 0.1)',
-                    tension: 0.4,
-                    fill: true
-                },
-                {
-                    label: 'Inomhus',
-                    data: [],
-                    borderColor: '#ff6b6b',
-                    backgroundColor: 'rgba(255, 107, 107, 0.1)',
-                    tension: 0.4,
-                    fill: true
-                }
+                { label: 'Utgående kall', data: [], borderColor: '#38bdf8', tension: 0.35, fill: false, spanGaps: true },
+                { label: 'Ingående kall', data: [], borderColor: '#22d3ee', tension: 0.35, fill: false, spanGaps: true },
+                { label: 'Utgående varm', data: [], borderColor: '#f97316', tension: 0.35, fill: false, spanGaps: true },
+                { label: 'Varmsida intag', data: [], borderColor: '#fb7185', tension: 0.35, fill: false, spanGaps: true },
+                { label: 'Kyllyft °C', data: [], borderColor: '#a78bfa', tension: 0.35, fill: false, spanGaps: true, borderDash: [5, 4] }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            interaction: {
-                intersect: false,
-                mode: 'index'
-            },
-            plugins: {
-                legend: {
-                    labels: {
-                        color: textColor
-                    }
-                }
-            },
+            interaction: { intersect: false, mode: 'index' },
+            plugins: { legend: { labels: { color: textColor } } },
             scales: {
-                x: {
-                    grid: {
-                        color: gridColor
-                    },
-                    ticks: {
-                        color: textColor
-                    }
-                },
-                y: {
-                    grid: {
-                        color: gridColor
-                    },
-                    ticks: {
-                        color: textColor
-                    }
-                }
+                x: { grid: { color: gridColor }, ticks: { color: textColor } },
+                y: { grid: { color: gridColor }, ticks: { color: textColor } }
             }
         }
     });
 }
 
-function updateChart(data) {
-    if (!tempChart || !data.sensors) return;
-    
-    // Add new data point
+function pushHistoryPoint(sensors, coolingDelta) {
     const now = new Date().toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
-    
     state.historyData.labels.push(now);
-    state.historyData.outdoor.push(data.sensors.outdoor_temp);
-    state.historyData.indoor.push(data.sensors.supply_temp);
-    
-    // Keep only last 20 points
-    if (state.historyData.labels.length > 20) {
+    state.historyData.outdoor.push(toFiniteNumber(sensors?.outdoor_temp));
+    state.historyData.indoor.push(toFiniteNumber(sensors?.supply_temp));
+    state.historyData.extract.push(toFiniteNumber(sensors?.extract_temp));
+    state.historyData.exhaust.push(toFiniteNumber(sensors?.exhaust_temp));
+    state.historyData.coolingDelta.push(toFiniteNumber(coolingDelta));
+
+    const maxPts = 60;
+    while (state.historyData.labels.length > maxPts) {
         state.historyData.labels.shift();
         state.historyData.outdoor.shift();
         state.historyData.indoor.shift();
+        state.historyData.extract.shift();
+        state.historyData.exhaust.shift();
+        state.historyData.coolingDelta.shift();
     }
-    
+}
+
+function updateChart(data) {
+    if (!tempChart || !data?.sensors) return;
+
+    const sensors = data.sensors;
+    const m = isMobileAcProfile() ? computeAcMetrics(sensors) : null;
+    pushHistoryPoint(sensors, m?.coolingDelta);
+
     tempChart.data.labels = state.historyData.labels;
-    tempChart.data.datasets[0].data = state.historyData.outdoor;
-    tempChart.data.datasets[1].data = state.historyData.indoor;
+    if (isMobileAcProfile() && tempChart.data.datasets.length >= 5) {
+        tempChart.data.datasets[0].data = state.historyData.indoor;     // supply = ut kall
+        tempChart.data.datasets[1].data = state.historyData.extract;    // extract = in kall
+        tempChart.data.datasets[2].data = state.historyData.exhaust;    // exhaust = ut varm
+        tempChart.data.datasets[3].data = state.historyData.outdoor;    // outdoor_temp = varmsida intag
+        tempChart.data.datasets[4].data = state.historyData.coolingDelta;
+    } else {
+        tempChart.data.datasets[0].data = state.historyData.outdoor;
+        tempChart.data.datasets[1].data = state.historyData.indoor;
+    }
     tempChart.update('none');
+}
+
+function updateAcChart(sensors, metrics) {
+    if (!acTempChart) {
+        initAcChart();
+    }
+    if (!acTempChart) return;
+
+    /* History already advanced by dashboard chart; just sync datasets */
+    acTempChart.data.labels = state.historyData.labels;
+    acTempChart.data.datasets[0].data = state.historyData.indoor;
+    acTempChart.data.datasets[1].data = state.historyData.extract;
+    acTempChart.data.datasets[2].data = state.historyData.exhaust;
+    acTempChart.data.datasets[3].data = state.historyData.outdoor;
+    acTempChart.data.datasets[4].data = state.historyData.coolingDelta;
+    acTempChart.update('none');
+    void sensors;
+    void metrics;
 }
 
 // Sliders + control panel

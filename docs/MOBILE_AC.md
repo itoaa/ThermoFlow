@@ -1,7 +1,7 @@
 # Mobil AC – övervakning och styrning
 
-**Version:** 1.1  
-**Senast uppdaterad:** 2026-07-15  
+**Version:** 1.2  
+**Senast uppdaterad:** 2026-07-17  
 **Läge-ID:** `ac_monitor`
 
 Webbgränssnittets **?**-ikoner använder samma definitioner som denna sida.  
@@ -11,16 +11,53 @@ Webbgränssnittets **?**-ikoner använder samma definitioner som denna sida.
 
 ## Syfte
 
-ThermoFlow kopplas till en **portabel luftkonditionering** med temperatursensorer på:
+ThermoFlow kopplas till en **portabel luftkonditionering** med upp till **fyra** temperatursensorer:
 
-| Sensorroll (API) | Visningsnamn | Placering |
-|------------------|--------------|-----------|
-| `supply` | **Kylutblås** | Kall luft in i rummet |
-| `exhaust` | **Kondensorutblås** | Varm avluft / slang ut |
-| `outdoor` | **Rumsluft** | Referens i rummet |
-| `extract` | **Extra mätpunkt** | Valfri |
+| Sensorroll (API-nyckel) | Visningsnamn | Placering |
+|-------------------------|--------------|-----------|
+| `supply` (`supply_temp`) | **Utgående kall luft** | Kylutblås in i rummet (efter förångare) |
+| `extract` (`extract_temp`) | **Ingående kall luft** | Luft in till kalla sidan / förångare |
+| `exhaust` (`exhaust_temp`) | **Utgående varm luft** | Kondensorutblås / slang ut |
+| `outdoor` (`outdoor_temp`) | **Varmsida intag** | Luft in till kondensorn — se nedan |
 
-Målet är att **se hur AC:n presterar** och, om tillval är på, **styra stödaktuatorer** med tydlig policy.
+Målet är att **se hur AC:n presterar** (kyllyft, värmeavgivning, verkningsgrad) och, om tillval är på, **styra stödaktuatorer**.
+
+### UI-regel för data
+
+Webbgränssnittet visar **endast riktiga mätvärden eller `N/A`**, utom när:
+
+- **Demo-läge** (`?demo=1` i webbläsaren), eller  
+- **Simulering / Sin-mode** (datakälla = *Simulering* under Inställningar).
+
+Auto-fallback till simulerad data (inga sensorer) **döljs** i UI (visas som N/A) så att man inte förväxlar fejkade siffror med mätning. Saknade/ogiltiga kanaler skickas som JSON `null` från API.
+
+---
+
+## Sensorplacering
+
+```
+        ┌─────────────────────────────────────┐
+Rum ──► │ extract (kall in)                   │
+        │         ↓  förångare                │
+        │ supply (kall ut)  ──► rum           │
+        │                                     │
+        │ outdoor_temp = **Varmsida intag**   │
+        │   1-slang: ofta rumsluft            │
+        │   2-slang: oftast uteluft           │
+        │         ↓  kondensor                │
+        │ exhaust (varm ut) ──► slang/ute     │
+        └─────────────────────────────────────┘
+```
+
+### Varmsida intag
+
+Tidigare kallades sloten “outdoor” / utomhustemp, vilket missvisar för **1-slangars** portabel AC där kondensorn oftast suger **rumsluft**. Vid **2-slangars** ombyggnad är samma mätpunkt däremot normalt **uteluft**.
+
+Därför heter mätpunkten i UI **Varmsida intag** (neutral). API-nyckeln förblir `outdoor_temp` så att samma sensor-slot fungerar i Mini-FTX/värmeväxlare (där den betyder uteluft).
+
+**Tips för utgående varm luft:** mät **blandad bulktemperatur** (mitt i flödet / efter en kort blandningssträcka), inte bara i kanten av slangen. Stratifierat flöde ger fel ΔT och fel COP-proxy.
+
+I2C-adresser (fasta slots): sensor 0=`supply`, 1=`extract`, 2=`exhaust`, 3=`outdoor` (AC: varmsida intag).
 
 ---
 
@@ -28,11 +65,50 @@ Målet är att **se hur AC:n presterar** och, om tillval är på, **styra stöda
 
 | Projekt / mönster | Vad vi tar med |
 |-------------------|----------------|
-| [ESPHome PWM fan + tach](https://github.com/patrickcollins12/esphome-fan-controller) | Separat **börvärde (PWM %)** och **uppmätt RPM**; fel om RPM uteblir |
-| [HA/ESP32 fan controllers](https://community.home-assistant.io/t/pwm-fan-controller/433316) | **Manuell** vs **temp/fukt-auto**; live status i UI |
-| HVAC “fault response” | Vid risk: **observera**, **förstärk flöde**, eller **mildra kylning** – inte bara en röd lampa |
+| [ESPHome PWM fan + tach](https://github.com/patrickcollins12/esphome-fan-controller) | Separat **börvärde (PWM %)** och **uppmätt RPM** |
+| HVAC energibalans utan elmätare | COP-proxy från ΔT på båda sidor |
+| HVAC “fault response” | Vid risk: **observera**, **förstärk flöde**, eller **mildra kylning** |
 
-Vi kopierar inte HA/ESPHome rakt av, men samma uppdelning: *policy → signal → feedback*.
+---
+
+## Nyckeltal (Överblick)
+
+Beräknas i UI (`computeAcMetrics`) från de fyra temperaturerna:
+
+| Nyckeltal | Formel | Betydelse |
+|-----------|--------|-----------|
+| **Kyllyft (ΔT)** | \(T_{kall\_in} - T_{kall\_ut}\) | Hur många grader luftströmmen kyls |
+| **Värmeavgivning** | \(T_{varm\_ut} - T_{varmsida\_intag}\) | Hur mycket varmsidan värmer luften |
+| **Sidobalans** | \(\Delta T_{varm} / \Delta T_{kall}\) (om kyllyft > 0,5 °C) | Ofta > 1 (kompressorvärme på varmsidan) |
+| **Termisk verkningsgrad η** | \(\Delta T_{kall} / \Delta T_{varm} \times 100\%\) | Andel av avgiven värme som kommer från kyla (lika massflöde) |
+| **COP-proxy** | \(\Delta T_{kall} / (\Delta T_{varm} - \Delta T_{kall})\) | Luftsidig uppskattning av “kyla per kompressorvärme” |
+| **Blandtemp. ut** | \((T_{kall\_ut} + T_{varm\_ut}) / 2\) | Snabb kontroll av mätpunkter / flödesbalans |
+| **Kondensrisk** | Låg / medel / hög från RH + T på kylutblås | Se nedan |
+| **Kylindex** | 0–100 från kyllyft (~12 °C → 100) | Lättläst “hur hårt den kyler” |
+
+Saknas kallingång används varmingång som fallback-referens för kyllyft.
+
+### Blandtemperatur och verkningsgrad (metod)
+
+Utan elmätare kan man inte räkna fabrikens **elektriska COP**. Däremot ger energibalans på luftsida en användbar proxy:
+
+1. **Kyleffekt** (relativ): \(Q_c \propto \dot m_c\, c_p\, \Delta T_c\)
+2. **Värmeavgivning**: \(Q_h \propto \dot m_h\, c_p\, \Delta T_h\)
+3. **Energibalans**: \(Q_h \approx Q_c + W_{kompressor}\)
+4. Med **ungefär lika massflöde** (\(\dot m_c \approx \dot m_h\)):
+
+\[
+\mathrm{COP_{proxy}} \approx \frac{\Delta T_c}{\Delta T_h - \Delta T_c},\quad
+\eta \approx \frac{\Delta T_c}{\Delta T_h}
+\]
+
+**Varför blanda varmutblåset?** En punktsensor i en stratifierad slang underskattar/överskattar \(\Delta T_h\). Genom att mäta en **representativ blandtemperatur** i utblåset blir \(Q_h\) mer trovärdig, och därmed η och COP-proxy.
+
+Begränsningar:
+
+- Inte samma sak som märk-COP (kräver eleffekt och ofta fukt/latenthänsyn).
+- Olika massflöde kallt/varmt (t.ex. enkel-slang AC) ger bias — sidobalans hjälper att upptäcka det.
+- Värden är **N/A** tills båda sidor har giltiga mätningar.
 
 ---
 
@@ -67,16 +143,9 @@ Under **Inställningar → Mobil AC** (inte under Styrning-fliken):
 
 ### Överblick
 
-Nyckeltal (beräknas i UI från sensorer; samma formler som nedan):
-
-| Nyckeltal | Formel / tumregel |
-|-----------|-------------------|
-| **Kyllyft** | \(T_{rum} - T_{kyl}\) |
-| **Värmeavgivning** | \(T_{varm} - T_{rum}\) |
-| **Sidobalans** | värmeavgivning / kyllyft (om kyllyft > 0,5 °C) |
-| **Kondensrisk** | Låg / medel / hög från RH + T på kylutblås |
-| **Kylindex** | 0–100, normaliserat från kyllyft (~12 °C → 100) |
-| **Fukt i kylutblås** | `supply_rh` |
+- Fyra mätpunkter (in/ut kall, in/ut varm)
+- Graf: alla fyra temperaturer + kyllyft
+- Nyckeltal enligt tabellen ovan
 
 ### Styrning
 
@@ -85,9 +154,9 @@ Visas när minst ett av IR / linje / hjälpfläktar är valt.
 #### 1. Statusrad (live)
 
 - **Reglerläge** – manuell / automatisk  
-- **Kondensrisk** – samma klassning som Överblick  
-- **Policy vid risk** – se nedan  
-- **Kylindex** – snabb “hur hårt kyler den?”
+- **Kondensrisk**  
+- **Policy vid risk**  
+- **Kylindex**
 
 #### 2. Driftpolicy
 
@@ -98,17 +167,7 @@ Visas när minst ett av IR / linje / hjälpfläktar är valt.
 
 #### 3. Hjälpfläktar (om tillval)
 
-Per fläkt:
-
-| Visning | Källa |
-|---------|--------|
-| **Börvärde** | `control.assist_fans_status[].setpoint_pct` (PWM som skickas) |
-| **RPM** | `...rpm` om tach är inkopplad, annars — |
-| **Status** | Fel / ingen feedback / OK |
-| Manuell slider | Endast i **manuellt** reglerläge → `fan1_speed` / `fan2_speed` |
-
-**Auto (firmware):** bashastighet ökar med fukt i kalluft; typiskt 20–70 %.  
-**4-pin fläkt:** tach (öppen kollektor) + pull-up till 3,3 V; ESP32 pulse counter (som ESPHome). Utan tach visas RPM som saknad – det är förväntat för 3-pin.
+Per fläkt: börvärde (PWM %), RPM om tach, status. Auto baseras på fukt i kalluft.
 
 #### 4. Fjärrkommando (IR/linje)
 
@@ -118,13 +177,11 @@ Per fläkt:
 | Kylläge | `cool` | Aktiv kyla |
 | Fläktläge | `fan_only` | Bara fläkt (mindre kondensrisk) |
 
-Kommandon sparas i `ac_last_command` och loggas. Fysisk IR/relä kommer senare.
-
 ---
 
 ## Kondensrisk – åtgärder
 
-Klassning (kalluft):
+Klassning (kalluft / supply):
 
 | Nivå | Tumregel |
 |------|----------|
@@ -137,11 +194,8 @@ Klassning (kalluft):
 | Värde | UI-namn | Firmware-beteende |
 |-------|---------|-------------------|
 | `observe` | Endast övervaka | Ingen extra fläkt; risk syns i UI/logg |
-| `boost_assist` | Förstärk hjälpfläktar | Tvingar hjälpfläkt ≥ ~85 % vid risk (kräver `assist_fans`) |
-| `request_fan_only` | Begär fläktläge på AC | Sätter `ac_last_command=fan_only_request` (+ höjer assist lite); IR/linje stub |
-
-Varför “förstärk fläktar” och inte bara stänga?  
-För portabel AC sitter kondens ofta i **slang/utblås**. Ökat stödflöde kan hjälpa fukttransport; att stänga fläkt kan förvärra stillastående fukt. (Jämför med “increase exhaust on high humidity” i många rack/DIY-fläktprojekt.)
+| `boost_assist` | Förstärk hjälpfläktar | Tvingar hjälpfläkt ≥ ~85 % vid risk |
+| `request_fan_only` | Begär fläktläge på AC | Sätter `ac_last_command=fan_only_request` |
 
 ---
 
@@ -169,14 +223,13 @@ För portabel AC sitter kondens ofta i **slang/utblås**. Ökat stödflöde kan 
 }
 ```
 
-`POST /api/ftx/control`:
+Sensor-API (`GET /api/ftx`, `GET /api/ftx/sensors`) skickar `null` för ogiltiga kanaler plus:
 
-| command | Effekt |
-|---------|--------|
-| `fan1` / `fan2` | Manuellt börvärde |
-| `mode` + `mode: auto\|manual` | Reglerläge |
-| `power` / `cool` / `fan_only` | Fjärravsikt |
-| `ac_cond_action` + `mode` | Kondenspolicy |
+```json
+"valid": { "supply": true, "extract": true, "exhaust": false, "outdoor": true }
+```
+
+(`outdoor` = varmsida intag i Mobil AC; uteluft i FTX/HX.)
 
 ---
 
@@ -185,10 +238,11 @@ För portabel AC sitter kondens ofta i **slang/utblås**. Ökat stödflöde kan 
 | Del | Fil |
 |-----|-----|
 | Moduler + policy NVS | `components/device_profile/` |
-| Auto/manuell AC-fläkt + kondensoverride | `main/main.c` → `apply_fan_policy` |
-| API control + fan status | `components/web_server/web_server.c` |
-| UI Överblick/Styrning + hjälp | `components/web_server/web/*` |
-| PWM / status / framtida tach | `components/fan_control/` |
+| Sensor-slots + simulering | `components/sensor_manager/` |
+| Valid-flaggor i FTX-struct | `components/heat_recovery/` |
+| Auto/manuell AC-fläkt | `main/main.c` → `apply_fan_policy` |
+| API (null för saknade sensorer) | `components/web_server/web_server.c` |
+| UI Överblick/graf/nyckeltal | `components/web_server/web/*` |
 
 ---
 
