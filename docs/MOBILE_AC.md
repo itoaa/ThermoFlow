@@ -16,7 +16,7 @@ ThermoFlow kopplas till en **portabel luftkonditionering** med upp till **fyra**
 | Sensorroll (API-nyckel) | Visningsnamn | Placering |
 |-------------------------|--------------|-----------|
 | `supply` (`supply_temp`) | **Utgående kall luft** | Kylutblås in i rummet (efter förångare) |
-| `extract` (`extract_temp`) | **Ingående kall luft** | Luft in till kalla sidan / förångare |
+| `extract` (`extract_temp`) | **Kallsida intag** | Luft in till kalla sidan / förångare |
 | `exhaust` (`exhaust_temp`) | **Utgående varm luft** | Kondensorutblås / slang ut |
 | `outdoor` (`outdoor_temp`) | **Varmsida intag** | Luft in till kondensorn — se nedan |
 
@@ -39,7 +39,7 @@ Saknade/ogiltiga kanaler skickas som JSON `null` + `valid{}` från API. I Sensor
 
 ```
         ┌─────────────────────────────────────┐
-Rum ──► │ extract (kall in)                   │
+Rum ──► │ extract = **Kallsida intag**        │
         │         ↓  förångare                │
         │ supply (kall ut)  ──► rum           │
         │                                     │
@@ -50,6 +50,8 @@ Rum ──► │ extract (kall in)                   │
         │ exhaust (varm ut) ──► slang/ute     │
         └─────────────────────────────────────┘
 ```
+
+UI-namnen **Kallsida intag** / **Varmsida intag** är parallella: intag till respektive sida (förångare / kondensor). API-nycklarna är oförändrade (`extract_temp` / `outdoor_temp`).
 
 ### Varmsida intag
 
@@ -79,7 +81,7 @@ Beräknas i UI (`computeAcMetrics`) från de fyra temperaturerna:
 
 | Nyckeltal | Formel | Betydelse |
 |-----------|--------|-----------|
-| **Kyllyft (ΔT)** | \(T_{kall\_in} - T_{kall\_ut}\) | Hur många grader luftströmmen kyls |
+| **Kyllyft (ΔT)** | \(T_{kallsida\_intag} - T_{kall\_ut}\) | Hur många grader luftströmmen kyls |
 | **Värmeavgivning** | \(T_{varm\_ut} - T_{varmsida\_intag}\) | Hur mycket varmsidan värmer luften |
 | **Sidobalans** | \(\Delta T_{varm} / \Delta T_{kall}\) (om kyllyft > 0,5 °C) | Ofta > 1 (kompressorvärme på varmsidan) |
 | **Termisk verkningsgrad η** | \(\Delta T_{kall} / \Delta T_{varm} \times 100\%\) | Andel av avgiven värme som kommer från kyla (lika massflöde) |

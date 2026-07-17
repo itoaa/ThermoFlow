@@ -96,7 +96,7 @@ typedef enum {
 typedef struct {
     // Temperatures (°C)
     // Fixed sensor slots: 0=supply, 1=extract, 2=exhaust, 3=outdoor
-    // Mobil AC: supply=kall ut, extract=kall in, exhaust=varm ut,
+    // Mobil AC: supply=kall ut, extract=kallsida intag, exhaust=varm ut,
     //           outdoor_temp = "Varmsida intag" (1-hose often room air; 2-hose often outdoor)
     float outdoor_temp;              // FTX: outside air · AC: hot-side inlet (varmsida intag)
     float supply_temp;               // Supply air / cold-side outlet (AC)

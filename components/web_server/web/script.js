@@ -120,11 +120,11 @@ const APPLICATION_PROFILES = {
     },
     ac_monitor: {
         label: 'Mobil AC',
-        description: 'Portabel AC: fyra mätpunkter (kall in/ut, varm in/ut). Valfria tillval: IR-fjärr, linjestyrning, hjälpfläktar.',
+        description: 'Portabel AC: fyra mätpunkter (kallsida/varmsida intag + ut). Valfria tillval: IR-fjärr, linjestyrning, hjälpfläktar.',
         views: ['dashboard', 'sensors', 'ftx', 'logs', 'settings'],
         ftxNavLabel: 'Mobil AC',
         dashboardSubtitle: 'Kylprestanda och temperaturer för din AC',
-        sensorsSubtitle: 'Utgående/ingående kall- och varmsida',
+        sensorsSubtitle: 'Kallsida och varmsida (intag + ut)',
         gaugeOutdoor: 'Utgående kall luft',
         gaugeIndoor: 'Utgående varm luft',
         ftxTitle: 'Mobil AC',
@@ -134,7 +134,7 @@ const APPLICATION_PROFILES = {
         fan2Label: 'Hjälpfläkt 2',
         sensors: [
             { name: 'Utgående kall luft', icon: 'snowflake', tempKey: 'supply_temp', rhKey: 'supply_rh', role: 'supply' },
-            { name: 'Ingående kall luft', icon: 'wind', tempKey: 'extract_temp', rhKey: 'extract_rh', role: 'extract' },
+            { name: 'Kallsida intag', icon: 'wind', tempKey: 'extract_temp', rhKey: 'extract_rh', role: 'extract' },
             { name: 'Utgående varm luft', icon: 'fire', tempKey: 'exhaust_temp', rhKey: 'exhaust_rh', role: 'exhaust' },
             /* Slot outdoor_temp: FTX=ute; Mobil AC=varmsida intag (1-slang ofta rum, 2-slang ofta ute) */
             { name: 'Varmsida intag', icon: 'sign-in-alt', tempKey: 'outdoor_temp', rhKey: 'outdoor_rh', role: 'hot_in' }
@@ -215,9 +215,15 @@ const HELP_CATALOG = {
         doc: 'MOBILE_AC.md#hjälpfläktar'
     },
     'ac.cold_side': {
-        title: 'Kylsida (in + ut)',
-        short: 'Ingående och utgående luft på kalla sidan.',
-        long: 'Ingående kalluft (extract) tas in till förångaren; utgående kalluft (supply/kylutblås) blåses ut i rummet. Skillnaden är kyllyftet i luftströmmen.',
+        title: 'Kallsida (intag + ut)',
+        short: 'Kallsida intag och utgående kall luft.',
+        long: 'Kallsida intag (extract) tas in till förångaren; utgående kall luft (supply/kylutblås) blåses ut i rummet. Skillnaden är kyllyftet i luftströmmen.',
+        doc: 'MOBILE_AC.md#sensorplacering'
+    },
+    'ac.cold_in': {
+        title: 'Kallsida intag',
+        short: 'Luft in till förångaren (kalla sidan).',
+        long: 'Mätpunkt för luft som går in till kallsida/förångare. API-slot extract_temp. Används som T_kall_in i kyllyft och COP-proxy. Parallell benämning till Varmsida intag.',
         doc: 'MOBILE_AC.md#sensorplacering'
     },
     'ac.hot_side': {
@@ -241,7 +247,7 @@ const HELP_CATALOG = {
     'ac.cooling_delta': {
         title: 'Kyllyft (ΔT)',
         short: 'Hur många grader luftströmmen kyls.',
-        long: 'Kyllyft = T_kall_in − T_kall_ut (°C). Det är den direkta “hur många grader den kyler”-mätningen i strömmen. Saknas kallingång används varmingång som fallback-referens.',
+        long: 'Kyllyft = T_kallsida_intag − T_kall_ut (°C). Det är den direkta “hur många grader den kyler”-mätningen i strömmen. Saknas kallsida intag används varmsida intag som fallback-referens.',
         doc: 'MOBILE_AC.md#kyllyft-δt'
     },
     'ac.heat_reject': {
@@ -466,7 +472,7 @@ function sanitizeSensorsForDisplay(sensors, dataMeta = null) {
  *
  * Mapping (API keys):
  *   supply  = utgående kall luft
- *   extract = ingående kall luft
+ *   extract = kallsida intag
  *   exhaust = utgående varm luft
  *   outdoor_temp slot = varmsida intag (1-slang ofta rum; 2-slang ofta ute)
  *
@@ -1069,7 +1075,7 @@ function generateDemoFtxPayload() {
     if (acMode) {
         /* Mobile AC demo: cold in/out + hot in/out */
         const room = 24.5 + 1.2 * Math.sin(dayPhase + 0.3) + noise * 0.4;
-        extractTemp = room;                         // kall in (rumsluft till förångare)
+        extractTemp = room;                         // kallsida intag (rumsluft till förångare)
         supplyTemp = room - (9 + 2.5 * Math.sin(dayPhase + 1.1) + noise); // kall ut
         outdoorTemp = room - 0.5 + hourWobble * 0.3; // varm in (ofta rumsluft)
         exhaustTemp = outdoorTemp + (14 + 3 * Math.sin(dayPhase) + noise); // varm ut
@@ -2084,7 +2090,7 @@ function initChart() {
             datasets: ac
                 ? [
                     { ...base, label: 'Utgående kall', data: [], borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.08)' },
-                    { ...base, label: 'Ingående kall', data: [], borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.08)' },
+                    { ...base, label: 'Kallsida intag', data: [], borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.08)' },
                     { ...base, label: 'Utgående varm', data: [], borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.08)' },
                     { ...base, label: 'Varmsida intag', data: [], borderColor: '#fb7185', backgroundColor: 'rgba(251,113,133,0.08)' },
                     { ...base, label: 'Kyllyft °C', data: [], borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.08)', borderDash: [6, 4] }
@@ -2132,7 +2138,7 @@ function initAcChart() {
             labels: [],
             datasets: [
                 { ...base, label: 'Utgående kall', data: [], borderColor: '#38bdf8' },
-                { ...base, label: 'Ingående kall', data: [], borderColor: '#22d3ee' },
+                { ...base, label: 'Kallsida intag', data: [], borderColor: '#22d3ee' },
                 { ...base, label: 'Utgående varm', data: [], borderColor: '#f97316' },
                 { ...base, label: 'Varmsida intag', data: [], borderColor: '#fb7185' },
                 { ...base, label: 'Kyllyft °C', data: [], borderColor: '#a78bfa', borderDash: [5, 4] }

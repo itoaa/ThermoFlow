@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added - Mobil AC 4-punktsmätning och verkningsgrad
-- Fyra mätpunkter: utgående/ingående kall luft, utgående varm luft, **varmsida intag**
+- Fyra mätpunkter: utgående kall luft, **kallsida intag**, utgående varm luft, **varmsida intag**
 - Nyckeltal: kyllyft (°C), värmeavgivning, sidobalans, termisk verkningsgrad η, COP-proxy
 - Blandtemperatur-kontroll och graf (4 temperaturer + kyllyft) i web-UI
 - API skickar `null` + `valid{}` per sensorkanal (UI visar N/A, inte fejkade 0.0)
@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Temperaturhistorik**: slutade nollställas varje poll (profile-apply raderade serien); sparar tidsstämplad historik upp till 24h; intervall **5 min / 10 min / 1h / 6h / 24h**
 - Fasta sensorslots (0–3) så roller inte förskjuts när en sensor saknas
 - **Varmsida intag** (API `outdoor_temp`): neutral för 1-slang (rum) och 2-slang (ute); inte längre kallad “utomhus” i AC-UI
+- **Kallsida intag** (API `extract_temp`): enhetligt med varmsida intag (ersätter “Ingående kall luft”)
 - Dokumentation: [docs/MOBILE_AC.md](docs/MOBILE_AC.md)
 
 

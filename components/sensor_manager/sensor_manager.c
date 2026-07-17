@@ -59,7 +59,7 @@ static void generate_simulated_data(sensor_manager_data_t *data)
 
     /* Portable AC-like stream (also usable as FTX demo numbers) */
     float room = 24.0f + 1.2f * sinf(day_phase + 0.3f) + noise * 0.4f;
-    float extract_temp = room;                                          /* kall in */
+    float extract_temp = room;                                          /* kallsida intag */
     float supply_temp = room - (9.0f + 2.0f * sinf(day_phase + 1.0f) + noise); /* kall ut */
     float outdoor_temp = room - 0.4f + hour_wobble * 0.3f;              /* varmsida intag */
     float exhaust_temp = outdoor_temp + (13.0f + 2.5f * sinf(day_phase) + noise); /* varm ut */

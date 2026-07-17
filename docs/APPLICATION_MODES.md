@@ -113,7 +113,7 @@ Se detaljerad guide: **[MOBILE_AC.md](MOBILE_AC.md)** (samma texter som UI-hjäl
 | Roll | Visningsnamn |
 |------|----------------|
 | `supply` | Utgående kall luft (kylutblås) |
-| `extract` | Ingående kall luft |
+| `extract` | **Kallsida intag** |
 | `exhaust` | Utgående varm luft (kondensorutblås) |
 | `outdoor` (`outdoor_temp`) | **Varmsida intag** (1-slang ofta rumsluft; 2-slang ofta uteluft) |
 
