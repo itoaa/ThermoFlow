@@ -1,0 +1,5 @@
+# Documentation site dependencies (not needed for firmware builds)
+# Pin <2 until Material supports MkDocs 2.x fully
+mkdocs>=1.6.0,<2
+mkdocs-material>=9.5.0,<10
+pymdown-extensions>=10.0

@@ -1,0 +1,112 @@
+# ThermoFlow documentation site (MkDocs Material)
+# Build:  pip install -r requirements-docs.txt && mkdocs serve
+# Deploy: GitHub Actions → GitHub Pages (see .github/workflows/docs.yml)
+
+site_name: ThermoFlow Docs
+site_description: Dokumentation för ThermoFlow — ESP32-S3 klimatövervakning och styrning
+site_author: Ola Andersson
+site_url: https://itoaa.github.io/ThermoFlow/
+
+repo_name: itoaa/ThermoFlow
+repo_url: https://github.com/itoaa/ThermoFlow
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  language: sv
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Mörkt läge
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Ljust läge
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search:
+      lang:
+        - sv
+        - en
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/itoaa/ThermoFlow
+  generator: false
+
+copyright: Copyright &copy; ThermoFlow contributors · MIT License
+
+nav:
+  - Hem: index.md
+  - Kom igång:
+      - Sensoranslutning (Cat 5e/6): SENSOR_WIRING.md
+      - WiFi och flash: WIFI_AND_FLASH.md
+      - Versionshantering: VERSIONING.md
+      - PSRAM: PSRAM.md
+      - Docs-sajten (hur den uppdateras): DOCS_SITE.md
+  - Användning:
+      - Applikationslägen: APPLICATION_MODES.md
+      - Mobil AC: MOBILE_AC.md
+      - Mini-FTX: FTX_EXTENSION.md
+      - Loggning: LOGGING.md
+  - Utveckling:
+      - Implementationsstatus: IMPLEMENTATION_STATUS.md
+      - TODO: TODO.md
+      - ESP-IDF-kompatibilitet: ESP_IDF_COMPATIBILITY.md
+      - MQTT / FTX API: MQTT_FTX_API.md
+      - OTA: OTA_IMPLEMENTATION.md
+      - HTTPS: HTTPS-SETUP.md
+      - SBOM: SBOM.md
+  - Säkerhet:
+      - WiFi-kryptering: WiFi_Encryption.md
+      - Secure Boot-provisionering: SECURE_BOOT_PROVISIONING.md
+      - SEC-024: SEC-024-IMPLEMENTATION.md
+      - SEC-030: SEC-030-implementation-summary.md
+      - Nyckelbackup: KEY_BACKUP_RECOVERY.md
+      - Certificate pinning: security/CERTIFICATE_PINNING.md
+      - Threat model: security/threat-model.md

@@ -118,11 +118,12 @@ Exempel `GET /api/device/info`:
 
 ## Hardware
 
-- **MCU:** ESP32-S3 (240 MHz, WiFi + BLE)
-- **Sensors:** Sensirion SHT40 (I2C)
+- **MCU:** ESP32-S3 (240 MHz, WiFi + BLE), t.ex. DevKit **N16R8** (16 MB flash, 8 MB PSRAM)
+- **Sensors:** Sensirion SHT40 (I2C) — upp till 4 st
 - **Display:** OLED 0.96" I2C (optional)
 - **Fans:** 2× PWM (GPIO 10/11)
 - **Power:** 5 V USB or 5 V/2 A adapter
+- **Sensor cable:** Cat 5e or Cat 6 recommended (see wiring guide)
 
 | Function | GPIO |
 |----------|------|
@@ -131,12 +132,36 @@ Exempel `GET /api/device/info`:
 | Fan 1 PWM | GPIO 10 |
 | Fan 2 PWM | GPIO 11 |
 
+**Ansluta temp/fukt-givare:** full färgkod, skruvplintar, pin-map och kopplingsdiagram finns i **[docs/SENSOR_WIRING.md](docs/SENSOR_WIRING.md)** (Cat 5e / Cat 6 → SHT40 via expansionskort).
+
+### Publik dokumentation (GitHub Pages)
+
+Handböcker publiceras automatiskt som statisk sajt:
+
+| | |
+|--|--|
+| **URL** | https://itoaa.github.io/ThermoFlow/ |
+| **Källa** | `docs/` + `mkdocs.yml` |
+| **CI** | [`.github/workflows/docs.yml`](.github/workflows/docs.yml) |
+| **Guide** | [docs/DOCS_SITE.md](docs/DOCS_SITE.md) |
+
+Enhetens webb-UI länkar hit (meny **Dokumentation**, Inställningar, **?**-modal). API: `docs_url` i `GET /api/device/info`.
+
+Lokal förhandsvisning:
+
+```bash
+pip install -r requirements-docs.txt
+mkdocs serve
+```
+
 ---
 
 ## Documentation
 
 | Document | Purpose |
 |----------|---------|
+| [SENSOR_WIRING.md](docs/SENSOR_WIRING.md) | **SHT40 + Cat 5e/6:** pin-map, färgkod, plintar, diagram |
+| [DOCS_SITE.md](docs/DOCS_SITE.md) | Publik MkDocs-sajt, CI och UI-länkar |
 | [LOGGING.md](docs/LOGGING.md) | Unified logging architecture |
 | [APPLICATION_MODES.md](docs/APPLICATION_MODES.md) | Mini-FTX, värmeväxlare, mobil AC, sensor-only |
 | [MOBILE_AC.md](docs/MOBILE_AC.md) | Mobil AC: tillval, nyckeltal, hjälptexter |

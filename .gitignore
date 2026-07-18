@@ -20,3 +20,7 @@ keys/*.key
 .idea/
 *.swp
 managed_components/
+
+# MkDocs documentation site (built by CI / mkdocs build)
+site/
+.cache/

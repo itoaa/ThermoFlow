@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 620" font-family="Segoe UI, system-ui, sans-serif">
+  <rect width="960" height="620" fill="#f8fafc"/>
+  <text x="480" y="28" text-anchor="middle" font-size="18" font-weight="700" fill="#0f172a">Detaljerat kopplingsschema — Cat 5e/6 till SHT40</text>
+  <text x="480" y="48" text-anchor="middle" font-size="12" fill="#64748b">Expansionskortets skruvplintar ↔ nätverkskabel ↔ temp/fukt-modul</text>
+
+  <!-- Left: Expansion terminals -->
+  <rect x="30" y="70" width="260" height="480" rx="10" fill="#052e16" stroke="#4ade80" stroke-width="2"/>
+  <text x="160" y="100" text-anchor="middle" font-size="14" font-weight="700" fill="#dcfce7">Expansionskort</text>
+  <text x="160" y="120" text-anchor="middle" font-size="11" fill="#86efac">skruvplint (ESP32-S3)</text>
+
+  <!-- Terminal blocks -->
+  <g>
+    <rect x="55" y="150" width="210" height="55" rx="6" fill="#166534" stroke="#86efac"/>
+    <circle cx="80" cy="177" r="10" fill="#e2e8f0" stroke="#64748b"/>
+    <text x="110" y="172" font-size="13" font-weight="700" fill="#fff">3V3</text>
+    <text x="110" y="190" font-size="11" fill="#bbf7d0">matning sensorer</text>
+
+    <rect x="55" y="220" width="210" height="55" rx="6" fill="#166534" stroke="#86efac"/>
+    <circle cx="80" cy="247" r="10" fill="#e2e8f0" stroke="#64748b"/>
+    <text x="110" y="242" font-size="13" font-weight="700" fill="#fff">GND</text>
+    <text x="110" y="260" font-size="11" fill="#bbf7d0">gemensam jord</text>
+
+    <rect x="55" y="290" width="210" height="55" rx="6" fill="#1d4ed8" stroke="#93c5fd"/>
+    <circle cx="80" cy="317" r="10" fill="#e2e8f0" stroke="#64748b"/>
+    <text x="110" y="312" font-size="13" font-weight="700" fill="#fff">GPIO 8</text>
+    <text x="110" y="330" font-size="11" fill="#bfdbfe">SDA (I2C data)</text>
+
+    <rect x="55" y="360" width="210" height="55" rx="6" fill="#c2410c" stroke="#fdba74"/>
+    <circle cx="80" cy="387" r="10" fill="#e2e8f0" stroke="#64748b"/>
+    <text x="110" y="382" font-size="13" font-weight="700" fill="#fff">GPIO 9</text>
+    <text x="110" y="400" font-size="11" fill="#fed7aa">SCL (I2C klocka)</text>
+
+    <rect x="55" y="440" width="210" height="70" rx="6" fill="#14532d" stroke="#4ade80" stroke-dasharray="4 2"/>
+    <text x="160" y="470" text-anchor="middle" font-size="11" fill="#86efac">Valfritt samma kort:</text>
+    <text x="160" y="490" text-anchor="middle" font-size="11" fill="#bbf7d0">GPIO 10 / 11 = fläkt-PWM</text>
+  </g>
+
+  <!-- Middle: Cable -->
+  <rect x="340" y="150" width="280" height="320" rx="10" fill="#fff" stroke="#94a3b8" stroke-width="2"/>
+  <text x="480" y="180" text-anchor="middle" font-size="13" font-weight="700" fill="#0f172a">Cat 5e / Cat 6</text>
+  <text x="480" y="200" text-anchor="middle" font-size="11" fill="#64748b">8 ledare · 4 twisted pairs</text>
+
+  <!-- Cable wires list -->
+  <g font-size="12">
+    <circle cx="370" cy="240" r="7" fill="#a16207"/>
+    <text x="390" y="245" fill="#713f12">Brun → 3V3</text>
+    <circle cx="370" cy="270" r="7" fill="#fff" stroke="#a16207" stroke-width="2"/>
+    <text x="390" y="275" fill="#713f12">Vit/brun → 3V3 (parallell)</text>
+
+    <circle cx="370" cy="310" r="7" fill="#fff" stroke="#2563eb" stroke-width="2"/>
+    <text x="390" y="315" fill="#1e40af">Vit/blå → GND</text>
+    <circle cx="370" cy="340" r="7" fill="#fff" stroke="#ea580c" stroke-width="2"/>
+    <text x="390" y="345" fill="#9a3412">Vit/orange → GND</text>
+
+    <circle cx="370" cy="385" r="7" fill="#ea580c"/>
+    <text x="390" y="390" fill="#9a3412">Orange → SCL (GPIO 9)</text>
+    <circle cx="370" cy="415" r="7" fill="#2563eb"/>
+    <text x="390" y="420" fill="#1e40af">Blå → SDA (GPIO 8)</text>
+  </g>
+  <text x="480" y="450" text-anchor="middle" font-size="10" fill="#64748b">Grön-paret oanvänt (reserv)</text>
+
+  <!-- Connection lines left to cable -->
+  <line x1="265" y1="177" x2="340" y2="240" stroke="#a16207" stroke-width="2"/>
+  <line x1="265" y1="247" x2="340" y2="325" stroke="#16a34a" stroke-width="2"/>
+  <line x1="265" y1="317" x2="340" y2="415" stroke="#2563eb" stroke-width="2"/>
+  <line x1="265" y1="387" x2="340" y2="385" stroke="#ea580c" stroke-width="2"/>
+
+  <!-- Right: SHT40 -->
+  <rect x="670" y="150" width="260" height="320" rx="10" fill="#431407" stroke="#fb923c" stroke-width="2"/>
+  <text x="800" y="185" text-anchor="middle" font-size="14" font-weight="700" fill="#ffedd5">SHT40-modul</text>
+  <text x="800" y="205" text-anchor="middle" font-size="11" fill="#fdba74">temp + relativ fukt</text>
+
+  <g>
+    <rect x="700" y="240" width="200" height="40" rx="5" fill="#7c2d12"/>
+    <text x="800" y="265" text-anchor="middle" fill="#ffedd5" font-size="13" font-weight="600">VCC ← brun(+vit/brun)</text>
+
+    <rect x="700" y="295" width="200" height="40" rx="5" fill="#7c2d12"/>
+    <text x="800" y="320" text-anchor="middle" fill="#ffedd5" font-size="13" font-weight="600">GND ← vit/blå+vit/orange</text>
+
+    <rect x="700" y="350" width="200" height="40" rx="5" fill="#9a3412"/>
+    <text x="800" y="375" text-anchor="middle" fill="#ffedd5" font-size="13" font-weight="600">SCL ← orange</text>
+
+    <rect x="700" y="405" width="200" height="40" rx="5" fill="#1e40af"/>
+    <text x="800" y="430" text-anchor="middle" fill="#dbeafe" font-size="13" font-weight="600">SDA ← blå</text>
+  </g>
+
+  <!-- Lines cable to sensor -->
+  <line x1="620" y1="240" x2="700" y2="260" stroke="#a16207" stroke-width="2"/>
+  <line x1="620" y1="325" x2="700" y2="315" stroke="#16a34a" stroke-width="2"/>
+  <line x1="620" y1="385" x2="700" y2="370" stroke="#ea580c" stroke-width="2"/>
+  <line x1="620" y1="415" x2="700" y2="425" stroke="#2563eb" stroke-width="2"/>
+
+  <!-- Bottom steps -->
+  <rect x="30" y="565" width="900" height="40" rx="6" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="480" y="590" text-anchor="middle" font-size="12" fill="#1e3a8a">Steg: 1) Strömlös enhet  2) Skala Cat-kabel  3) Skruva i plint  4) Löd/anslut modul  5) Kontrollera 3,3 V  6) Boota och kolla /api/hardware</text>
+</svg>

@@ -96,6 +96,12 @@ typedef enum {
 #define WEB_SERVER_MAX_CLIENTS        4
 #define WEB_SERVER_SESSION_TIMEOUT    1800    // seconds
 
+// Public documentation site (MkDocs → GitHub Pages). Used by web UI help links.
+// Override at build time if you host docs elsewhere.
+#ifndef THERMOFLOW_DOCS_BASE_URL
+#define THERMOFLOW_DOCS_BASE_URL      "https://itoaa.github.io/ThermoFlow"
+#endif
+
 // OTA configuration (SR-011)
 #define OTA_SERVER_URL                ""
 #define OTA_CHECK_INTERVAL_MS         3600000 // 1 hour

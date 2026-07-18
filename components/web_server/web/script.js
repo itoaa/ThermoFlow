@@ -188,8 +188,66 @@ function getProfileConfig(profileId = state.applicationProfile) {
     return APPLICATION_PROFILES[profileId] || APPLICATION_PROFILES.heat_exchanger;
 }
 
-/** Help texts synced with docs/MOBILE_AC.md (short = hover, long = click) */
+/**
+ * Public documentation base URL (MkDocs → GitHub Pages).
+ * Overridden by GET /api/device/info → docs_url when the device is online.
+ */
+let DOCS_BASE_URL = 'https://itoaa.github.io/ThermoFlow';
+
+/**
+ * Build a URL into the public docs site.
+ * @param {string} [docField] e.g. "MOBILE_AC.md#sensorplacering" or "SENSOR_WIRING.md"
+ */
+function resolveDocsUrl(docField) {
+    const base = (DOCS_BASE_URL || 'https://itoaa.github.io/ThermoFlow').replace(/\/$/, '');
+    if (!docField) {
+        return `${base}/`;
+    }
+    if (/^https?:\/\//i.test(docField)) {
+        return docField;
+    }
+    const hashIdx = docField.indexOf('#');
+    const file = hashIdx >= 0 ? docField.slice(0, hashIdx) : docField;
+    const hash = hashIdx >= 0 ? docField.slice(hashIdx + 1) : '';
+    const page = file.replace(/\.md$/i, '').replace(/^\//, '');
+    // MkDocs serves docs/index.md at site root
+    let url = (!page || page.toLowerCase() === 'index') ? `${base}/` : `${base}/${page}/`;
+    if (hash) {
+        url += `#${hash}`;
+    }
+    return url;
+}
+
+function setDocsBaseUrl(url) {
+    if (url && typeof url === 'string' && url.startsWith('http')) {
+        DOCS_BASE_URL = url.replace(/\/$/, '');
+    }
+    document.querySelectorAll('[data-docs-home]').forEach((el) => {
+        if (el.tagName === 'A') {
+            el.href = resolveDocsUrl();
+        }
+    });
+    document.querySelectorAll('[data-docs-path]').forEach((el) => {
+        if (el.tagName === 'A') {
+            el.href = resolveDocsUrl(el.getAttribute('data-docs-path'));
+        }
+    });
+}
+
+/** Help texts synced with public docs (short = hover, long = click) */
 const HELP_CATALOG = {
+    'wiring.overview': {
+        title: 'Ansluta temp/fukt-givare',
+        short: 'SHT40 via Cat 5e/6 till GPIO 8/9.',
+        long: 'ThermoFlow läser SHT40 över I2C: SDA = GPIO 8 (blå), SCL = GPIO 9 (orange), 3V3 (brun), GND (vit/blå + vit/orange). Använd expansionskortets skruvplintar. Full färgkod och kopplingsdiagram finns i dokumentationen.',
+        doc: 'SENSOR_WIRING.md'
+    },
+    'docs.home': {
+        title: 'Dokumentation',
+        short: 'Publik handbok (uppdateras från GitHub).',
+        long: 'Fullständig dokumentation hostas på GitHub Pages och byggs automatiskt när filer under docs/ ändras i repot. Enhetens UI visar live-data; handböcker och kopplingsscheman ligger externt.',
+        doc: 'index.md'
+    },
     'ac.modules_intro': {
         title: 'Mobil AC – tillval',
         short: 'Välj hur ThermoFlow kopplas till din portabla AC.',
@@ -325,6 +383,9 @@ const HELP_CATALOG = {
 };
 
 function setupHelpSystem() {
+    // Bind static docs links (nav / settings) to public site
+    setDocsBaseUrl(DOCS_BASE_URL);
+
     document.body.addEventListener('click', (e) => {
         const tip = e.target.closest('.help-tip');
         if (tip) {
@@ -368,9 +429,10 @@ function openHelp(helpId) {
     body.append(p1, p2);
     const link = document.getElementById('help-modal-doc-link');
     if (link) {
-        // Embedded docs path for repo; on device this is informational
-        link.href = `https://github.com/itoaa/ThermoFlow/blob/main/docs/${entry.doc || 'MOBILE_AC.md'}`;
-        link.textContent = 'Öppna dokumentation (GitHub)';
+        link.href = resolveDocsUrl(entry.doc || 'index.md');
+        link.textContent = 'Öppna full dokumentation';
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
     }
     modal.classList.remove('profile-hidden');
 }
@@ -1187,6 +1249,8 @@ function mockDemoApi(endpoint, options = {}) {
                 build_number: 42,
                 git_sha: 'demo',
                 channel: 'demo',
+                docs_url: 'https://itoaa.github.io/ThermoFlow',
+                docs_repo: 'https://github.com/itoaa/ThermoFlow',
                 ip_address: '127.0.0.1',
                 wifi_state: 'connected',
                 simulation_mode: true,
@@ -1597,6 +1661,10 @@ function updateMemoryInfo(data) {
 async function fetchDeviceInfo() {
     const data = await fetchAPI('/device/info');
     if (!data) return;
+
+    if (data.docs_url) {
+        setDocsBaseUrl(data.docs_url);
+    }
     
     const deviceId = data.device_id || data.default_name || '--';
     const displayName = data.device_name || data.name || deviceId;

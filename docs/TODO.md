@@ -49,10 +49,10 @@
 
 **Vid varje beteendeändring, nytt API eller flash-relaterad ändring:**
 
-1. Uppdatera [CHANGELOG.md](../CHANGELOG.md) under `[Unreleased]`
+1. Uppdatera [CHANGELOG.md](https://github.com/itoaa/ThermoFlow/blob/main/CHANGELOG.md) under `[Unreleased]`
 2. Uppdatera berörd guide (t.ex. [WIFI_AND_FLASH.md](WIFI_AND_FLASH.md))
 3. Uppdatera [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) om komponentstatus ändras
-4. Uppdatera [README.md](../README.md) om användarflöde eller quick start påverkas
+4. Uppdatera [README.md](https://github.com/itoaa/ThermoFlow/blob/main/README.md) om användarflöde eller quick start påverkas
 
 ## Driftlägen (SR-010)
 

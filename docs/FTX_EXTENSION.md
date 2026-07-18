@@ -278,7 +278,7 @@ fan_control_set_speed(FAN_EXHAUST, new_speed);
    - Tätning med silikontätning
 
 3. **Installera ESP32**
-   - Koppla sensorer (I2C)
+   - Koppla sensorer (I2C) — se **[SENSOR_WIRING.md](SENSOR_WIRING.md)** för Cat 5e/Cat 6, färgkod, GPIO 8/9 och expansionsplint
    - Koppla fläktar (PWM)
    - Lägg in i vattentätt kabinett
 

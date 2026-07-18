@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 560" font-family="Segoe UI, system-ui, sans-serif">
+  <rect width="920" height="560" fill="#f8fafc"/>
+  <text x="460" y="30" text-anchor="middle" font-size="18" font-weight="700" fill="#0f172a">ESP32-S3-DevKitC-1 (N16R8) + expansionskort</text>
+  <text x="460" y="50" text-anchor="middle" font-size="12" fill="#64748b">ThermoFlow pin-map — sensorer och fläktar</text>
+
+  <!-- DevKit body -->
+  <rect x="280" y="80" width="360" height="400" rx="12" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+  <text x="460" y="110" text-anchor="middle" font-size="14" font-weight="700" fill="#e0f2fe">ESP32-S3-WROOM-1-N16R8</text>
+  <rect x="340" y="125" width="240" height="70" rx="6" fill="#0f172a" stroke="#64748b"/>
+  <text x="460" y="155" text-anchor="middle" font-size="11" fill="#94a3b8">Modul / antenn</text>
+  <text x="460" y="175" text-anchor="middle" font-size="10" fill="#64748b">16 MB Flash · 8 MB OPI PSRAM</text>
+
+  <!-- Left header labels (expansion screw terminals) -->
+  <text x="40" y="100" font-size="12" font-weight="700" fill="#0f172a">Vänster plintar (urval)</text>
+
+  <!-- Left pins -->
+  <g font-size="11">
+    <!-- decorative pin row -->
+    <g fill="#334155">
+      <rect x="270" y="220" width="12" height="12" rx="2"/><rect x="270" y="245" width="12" height="12" rx="2"/>
+      <rect x="270" y="270" width="12" height="12" rx="2"/><rect x="270" y="295" width="12" height="12" rx="2"/>
+      <rect x="270" y="320" width="12" height="12" rx="2"/><rect x="270" y="345" width="12" height="12" rx="2"/>
+      <rect x="270" y="370" width="12" height="12" rx="2"/><rect x="270" y="395" width="12" height="12" rx="2"/>
+    </g>
+    <!-- highlighted sensor pins left side - 3V3 GND often on both sides -->
+    <line x1="160" y1="226" x2="270" y2="226" stroke="#94a3b8" stroke-width="1"/>
+    <text x="155" y="230" text-anchor="end" fill="#64748b">3V3 (ex.)</text>
+
+    <line x1="160" y1="276" x2="270" y2="276" stroke="#16a34a" stroke-width="2"/>
+    <rect x="40" y="262" width="115" height="28" rx="4" fill="#166534"/>
+    <text x="97" y="280" text-anchor="middle" fill="#fff" font-weight="600">GND → jord</text>
+  </g>
+
+  <!-- Right header -->
+  <text x="880" y="100" text-anchor="end" font-size="12" font-weight="700" fill="#0f172a">Höger plintar (urval)</text>
+  <g fill="#334155">
+    <rect x="638" y="220" width="12" height="12" rx="2"/><rect x="638" y="245" width="12" height="12" rx="2"/>
+    <rect x="638" y="270" width="12" height="12" rx="2"/><rect x="638" y="295" width="12" height="12" rx="2"/>
+    <rect x="638" y="320" width="12" height="12" rx="2"/><rect x="638" y="345" width="12" height="12" rx="2"/>
+    <rect x="638" y="370" width="12" height="12" rx="2"/><rect x="638" y="395" width="12" height="12" rx="2"/>
+    <rect x="638" y="420" width="12" height="12" rx="2"/>
+  </g>
+
+  <!-- GPIO 8 SDA -->
+  <line x1="650" y1="276" x2="760" y2="276" stroke="#2563eb" stroke-width="2.5"/>
+  <rect x="765" y="260" width="140" height="32" rx="5" fill="#1d4ed8"/>
+  <text x="835" y="281" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">GPIO 8 · SDA</text>
+
+  <!-- GPIO 9 SCL -->
+  <line x1="650" y1="301" x2="760" y2="301" stroke="#ea580c" stroke-width="2.5"/>
+  <rect x="765" y="285" width="140" height="32" rx="5" fill="#c2410c"/>
+  <text x="835" y="306" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">GPIO 9 · SCL</text>
+
+  <!-- GPIO 10 Fan1 -->
+  <line x1="650" y1="326" x2="760" y2="326" stroke="#7c3aed" stroke-width="1.5"/>
+  <rect x="765" y="312" width="140" height="28" rx="4" fill="#5b21b6"/>
+  <text x="835" y="331" text-anchor="middle" fill="#ede9fe" font-size="11">GPIO 10 · Fan 1 PWM</text>
+
+  <!-- GPIO 11 Fan2 -->
+  <line x1="650" y1="351" x2="760" y2="351" stroke="#7c3aed" stroke-width="1.5"/>
+  <rect x="765" y="337" width="140" height="28" rx="4" fill="#5b21b6"/>
+  <text x="835" y="356" text-anchor="middle" fill="#ede9fe" font-size="11">GPIO 11 · Fan 2 PWM</text>
+
+  <!-- 3V3 right -->
+  <line x1="650" y1="226" x2="760" y2="226" stroke="#dc2626" stroke-width="2"/>
+  <rect x="765" y="210" width="140" height="28" rx="4" fill="#b91c1c"/>
+  <text x="835" y="229" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">3V3 · matning</text>
+
+  <!-- GND right -->
+  <line x1="650" y1="401" x2="760" y2="401" stroke="#16a34a" stroke-width="2"/>
+  <rect x="765" y="386" width="140" height="28" rx="4" fill="#166534"/>
+  <text x="835" y="405" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">GND · jord</text>
+
+  <!-- Center callout -->
+  <rect x="310" y="230" width="300" height="150" rx="8" fill="#0f172a" stroke="#475569"/>
+  <text x="460" y="258" text-anchor="middle" font-size="13" font-weight="700" fill="#f8fafc">ThermoFlow firmware</text>
+  <text x="460" y="282" text-anchor="middle" font-size="12" fill="#93c5fd">I2C_MASTER_SDA_IO = 8</text>
+  <text x="460" y="302" text-anchor="middle" font-size="12" fill="#fdba74">I2C_MASTER_SCL_IO = 9</text>
+  <text x="460" y="322" text-anchor="middle" font-size="12" fill="#c4b5fd">FAN_1_GPIO = 10</text>
+  <text x="460" y="342" text-anchor="middle" font-size="12" fill="#c4b5fd">FAN_2_GPIO = 11</text>
+  <text x="460" y="365" text-anchor="middle" font-size="11" fill="#94a3b8">thermoflow_config.h</text>
+
+  <!-- Note box -->
+  <rect x="40" y="480" width="840" height="60" rx="8" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="60" y="505" font-size="12" fill="#1e3a8a">Expansionskort: ESP32-S3-DevKit sitter i sockel; varje ben går ut till märkt skruvplint.</text>
+  <text x="60" y="525" font-size="12" fill="#1e3a8a">Hitta plintarna märkta 8, 9, 3V3 och GND (eller G). Skruva loss, trä in ledare, dra åt — ingen lödning krävs.</text>
+</svg>

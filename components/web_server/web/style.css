@@ -245,6 +245,51 @@ body {
     color: var(--accent-primary);
 }
 
+.nav-link-external .nav-external-icon {
+    font-size: 0.65rem;
+    opacity: 0.65;
+}
+
+.docs-link-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.docs-link-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    text-decoration: none;
+    transition: var(--transition);
+}
+
+.docs-link-item span {
+    flex: 1;
+}
+
+.docs-link-item i:first-child {
+    color: var(--accent-primary);
+    width: 1.1rem;
+    text-align: center;
+}
+
+.docs-link-item i:last-child {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.docs-link-item:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--accent-primary);
+}
+
 .nav-actions {
     display: flex;
     gap: 8px;

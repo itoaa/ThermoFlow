@@ -12,6 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Publik dokumentationssajt (MkDocs + GitHub Pages)
+- `mkdocs.yml` + `requirements-docs.txt` (Material for MkDocs)
+- GitHub Actions [`.github/workflows/docs.yml`](.github/workflows/docs.yml): bygg och publicera vid ändringar under `docs/`
+- Startsida `docs/index.md` och guide [docs/DOCS_SITE.md](docs/DOCS_SITE.md)
+- Web-UI: nav **Dokumentation**, Inställningar-länkar, sensorguiden; hjälp-modal öppnar Pages-URL
+- API `GET /api/device/info`: `docs_url`, `docs_repo` (`THERMOFLOW_DOCS_BASE_URL`)
+
+### Added - Sensoranslutning (Cat 5e / Cat 6)
+- Ny guide [docs/SENSOR_WIRING.md](docs/SENSOR_WIRING.md): SHT40 via Cat 5e eller Cat 6 till ESP32-S3-DevKit **N16R8** på expansionskort med skruvplint
+- Pin-map: I2C **GPIO 8 (SDA)** / **GPIO 9 (SCL)**, 3V3, GND; färgkod T568B (blå/orange/brun + jordpar)
+- Kopplingsdiagram (SVG): översikt, plintar, färgkod, SHT40-pinout, detaljschema, multi-sensor-buss under `docs/images/`
+- README Hardware + FTX-bygginstruktion länkar till guiden
+
 ### Added - Mobil AC 4-punktsmätning och verkningsgrad
 - Fyra mätpunkter: utgående kall luft, **kallsida intag**, utgående varm luft, **varmsida intag**
 - Nyckeltal: kyllyft (°C), värmeavgivning, sidobalans, termisk verkningsgrad η, COP-proxy

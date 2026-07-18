@@ -166,5 +166,5 @@ Efter detta krävs onboarding **en gång**; därefter överlever uppgifterna app
 ## Relaterad dokumentation
 
 - [WiFi_Encryption.md](WiFi_Encryption.md) — krypteringsdetaljer (SEC-021)
-- [BUILD.md](../BUILD.md) — bygg och flash
-- [CHANGELOG.md](../CHANGELOG.md) — versionshistorik
+- [BUILD.md](https://github.com/itoaa/ThermoFlow/blob/main/BUILD.md) — bygg och flash
+- [CHANGELOG.md](https://github.com/itoaa/ThermoFlow/blob/main/CHANGELOG.md) — versionshistorik

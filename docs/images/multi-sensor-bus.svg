@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" font-family="Segoe UI, system-ui, sans-serif">
+  <rect width="960" height="420" fill="#f8fafc"/>
+  <text x="480" y="28" text-anchor="middle" font-size="18" font-weight="700" fill="#0f172a">Flera SHT40 på samma I2C-buss</text>
+  <text x="480" y="48" text-anchor="middle" font-size="12" fill="#64748b">Daisy-chain / stjärna — gemensam 3V3, GND, SDA, SCL</text>
+
+  <!-- ESP box -->
+  <rect x="40" y="140" width="160" height="120" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
+  <text x="120" y="180" text-anchor="middle" font-size="13" font-weight="700" fill="#e0f2fe">ESP32-S3</text>
+  <text x="120" y="205" text-anchor="middle" font-size="11" fill="#93c5fd">GPIO8 SDA</text>
+  <text x="120" y="225" text-anchor="middle" font-size="11" fill="#fdba74">GPIO9 SCL</text>
+  <text x="120" y="245" text-anchor="middle" font-size="11" fill="#86efac">3V3 + GND</text>
+
+  <!-- Bus lines -->
+  <line x1="200" y1="175" x2="900" y2="175" stroke="#2563eb" stroke-width="3"/>
+  <line x1="200" y1="200" x2="900" y2="200" stroke="#ea580c" stroke-width="3"/>
+  <line x1="200" y1="225" x2="900" y2="225" stroke="#a16207" stroke-width="2"/>
+  <line x1="200" y1="250" x2="900" y2="250" stroke="#16a34a" stroke-width="2"/>
+
+  <text x="920" y="179" font-size="10" fill="#2563eb">SDA</text>
+  <text x="920" y="204" font-size="10" fill="#ea580c">SCL</text>
+  <text x="920" y="229" font-size="10" fill="#a16207">3V3</text>
+  <text x="920" y="254" font-size="10" fill="#16a34a">GND</text>
+
+  <!-- Sensor drops -->
+  <g>
+    <!-- S1 -->
+    <line x1="320" y1="175" x2="320" y2="300" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="260" y="300" width="120" height="70" rx="8" fill="#7c2d12" stroke="#fb923c"/>
+    <text x="320" y="325" text-anchor="middle" font-size="12" font-weight="700" fill="#ffedd5">SHT40 #1</text>
+    <text x="320" y="345" text-anchor="middle" font-size="11" fill="#fdba74">0x44</text>
+    <text x="320" y="362" text-anchor="middle" font-size="10" fill="#fecaca">ADDR→GND</text>
+
+    <!-- S2 -->
+    <line x1="480" y1="175" x2="480" y2="300" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="420" y="300" width="120" height="70" rx="8" fill="#7c2d12" stroke="#fb923c"/>
+    <text x="480" y="325" text-anchor="middle" font-size="12" font-weight="700" fill="#ffedd5">SHT40 #2</text>
+    <text x="480" y="345" text-anchor="middle" font-size="11" fill="#fdba74">0x45</text>
+    <text x="480" y="362" text-anchor="middle" font-size="10" fill="#fecaca">ADDR→VDD</text>
+
+    <!-- S3 -->
+    <line x1="640" y1="175" x2="640" y2="300" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="580" y="300" width="120" height="70" rx="8" fill="#7c2d12" stroke="#fb923c"/>
+    <text x="640" y="325" text-anchor="middle" font-size="12" font-weight="700" fill="#ffedd5">SHT40 #3</text>
+    <text x="640" y="345" text-anchor="middle" font-size="11" fill="#fdba74">0x46</text>
+    <text x="640" y="362" text-anchor="middle" font-size="10" fill="#fecaca">se modul</text>
+
+    <!-- S4 -->
+    <line x1="800" y1="175" x2="800" y2="300" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="740" y="300" width="120" height="70" rx="8" fill="#7c2d12" stroke="#fb923c"/>
+    <text x="800" y="325" text-anchor="middle" font-size="12" font-weight="700" fill="#ffedd5">SHT40 #4</text>
+    <text x="800" y="345" text-anchor="middle" font-size="11" fill="#fdba74">0x47</text>
+    <text x="800" y="362" text-anchor="middle" font-size="10" fill="#fecaca">se modul</text>
+  </g>
+
+  <rect x="40" y="80" width="880" height="40" rx="6" fill="#ecfdf5" stroke="#86efac"/>
+  <text x="480" y="105" text-anchor="middle" font-size="12" fill="#14532d">Varje sensor kan ha egen Cat-kabel till en gemensam plint, eller en kabel som grenar ut. Max 4 sensorer. Unika adresser krävs.</text>
+</svg>

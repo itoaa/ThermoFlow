@@ -449,5 +449,5 @@ client.disconnect()
 ## See Also
 
 - [FTX_EXTENSION.md](FTX_EXTENSION.md) - Hardware and build guide
-- [PROJECT_FRAMEWORK.md](../PROJECT_FRAMEWORK.md) - Security requirements
+- [PROJECT_FRAMEWORK.md](https://github.com/itoaa/ThermoFlow/blob/main/PROJECT_FRAMEWORK.md) - Security requirements
 - [Home Assistant MQTT Documentation](https://www.home-assistant.io/integrations/mqtt/)

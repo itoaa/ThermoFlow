@@ -2335,6 +2335,9 @@ static esp_err_t device_info_handler(httpd_req_t *req)
     add_firmware_version_fields(root);
     cJSON_AddStringToObject(root, "platform", "ESP32-S3");
     cJSON_AddBoolToObject(root, "ota_available", OTA_SERVER_URL[0] != '\0');
+    /* Public docs (MkDocs / GitHub Pages) — web UI help links */
+    cJSON_AddStringToObject(root, "docs_url", THERMOFLOW_DOCS_BASE_URL);
+    cJSON_AddStringToObject(root, "docs_repo", "https://github.com/itoaa/ThermoFlow");
 
     /* Runtime heap / RAM (live — not static link-time sizes) */
     const size_t free_heap = esp_get_free_heap_size();

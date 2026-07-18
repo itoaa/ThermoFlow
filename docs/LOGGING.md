@@ -178,5 +178,5 @@ Survives reboot and `app-flash`. Cleared on `DELETE /api/logs` or full `erase-fl
 
 When changing logging behaviour, update:
 - [LOGGING.md](LOGGING.md)
-- [CHANGELOG.md](../CHANGELOG.md)
+- [CHANGELOG.md](https://github.com/itoaa/ThermoFlow/blob/main/CHANGELOG.md)
 - [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)

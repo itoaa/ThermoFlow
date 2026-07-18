@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" font-family="Segoe UI, system-ui, sans-serif">
+  <rect width="900" height="520" fill="#f8fafc"/>
+  <text x="450" y="32" text-anchor="middle" font-size="18" font-weight="700" fill="#0f172a">Cat 5e / Cat 6 — färgkod ThermoFlow (I2C)</text>
+  <text x="450" y="52" text-anchor="middle" font-size="12" fill="#64748b">Standard T568B-par · rekommenderad ledartilldelning</text>
+
+  <!-- Cable cross-section style pairs -->
+  <text x="40" y="95" font-size="14" font-weight="700" fill="#0f172a">1. Ledartilldelning (rekommenderad)</text>
+
+  <!-- Table header -->
+  <rect x="40" y="110" width="820" height="36" fill="#0f172a" rx="6"/>
+  <text x="70" y="133" font-size="12" font-weight="600" fill="#fff">Funktion</text>
+  <text x="220" y="133" font-size="12" font-weight="600" fill="#fff">Kabel färg</text>
+  <text x="400" y="133" font-size="12" font-weight="600" fill="#fff">Par (T568B)</text>
+  <text x="560" y="133" font-size="12" font-weight="600" fill="#fff">ESP / plint</text>
+  <text x="720" y="133" font-size="12" font-weight="600" fill="#fff">SHT40-modul</text>
+
+  <!-- Row SDA -->
+  <rect x="40" y="150" width="820" height="40" fill="#fff" stroke="#e2e8f0"/>
+  <text x="70" y="175" font-size="13" font-weight="600" fill="#0f172a">SDA (data)</text>
+  <circle cx="230" cy="170" r="8" fill="#2563eb"/>
+  <text x="248" y="175" font-size="13" fill="#1e40af">Blå</text>
+  <text x="400" y="175" font-size="12" fill="#334155">Par 1 (blå)</text>
+  <text x="560" y="175" font-size="12" fill="#334155">GPIO 8</text>
+  <text x="720" y="175" font-size="12" fill="#334155">SDA</text>
+
+  <!-- Row SDA GND -->
+  <rect x="40" y="190" width="820" height="40" fill="#f1f5f9" stroke="#e2e8f0"/>
+  <text x="70" y="215" font-size="13" font-weight="600" fill="#0f172a">GND (med SDA)</text>
+  <circle cx="230" cy="210" r="8" fill="#fff" stroke="#2563eb" stroke-width="2"/>
+  <text x="248" y="215" font-size="13" fill="#1e40af">Vit/blå</text>
+  <text x="400" y="215" font-size="12" fill="#334155">Par 1 (blå)</text>
+  <text x="560" y="215" font-size="12" fill="#334155">GND</text>
+  <text x="720" y="215" font-size="12" fill="#334155">GND</text>
+
+  <!-- Row SCL -->
+  <rect x="40" y="230" width="820" height="40" fill="#fff" stroke="#e2e8f0"/>
+  <text x="70" y="255" font-size="13" font-weight="600" fill="#0f172a">SCL (klocka)</text>
+  <circle cx="230" cy="250" r="8" fill="#ea580c"/>
+  <text x="248" y="255" font-size="13" fill="#9a3412">Orange</text>
+  <text x="400" y="255" font-size="12" fill="#334155">Par 2 (orange)</text>
+  <text x="560" y="255" font-size="12" fill="#334155">GPIO 9</text>
+  <text x="720" y="255" font-size="12" fill="#334155">SCL</text>
+
+  <!-- Row SCL GND -->
+  <rect x="40" y="270" width="820" height="40" fill="#f1f5f9" stroke="#e2e8f0"/>
+  <text x="70" y="295" font-size="13" font-weight="600" fill="#0f172a">GND (med SCL)</text>
+  <circle cx="230" cy="290" r="8" fill="#fff" stroke="#ea580c" stroke-width="2"/>
+  <text x="248" y="295" font-size="13" fill="#9a3412">Vit/orange</text>
+  <text x="400" y="295" font-size="12" fill="#334155">Par 2 (orange)</text>
+  <text x="560" y="295" font-size="12" fill="#334155">GND</text>
+  <text x="720" y="295" font-size="12" fill="#334155">GND</text>
+
+  <!-- Row VCC -->
+  <rect x="40" y="310" width="820" height="40" fill="#fff" stroke="#e2e8f0"/>
+  <text x="70" y="335" font-size="13" font-weight="600" fill="#0f172a">3,3 V matning</text>
+  <circle cx="230" cy="330" r="8" fill="#a16207"/>
+  <text x="248" y="335" font-size="13" fill="#713f12">Brun</text>
+  <text x="400" y="335" font-size="12" fill="#334155">Par 4 (brun)</text>
+  <text x="560" y="335" font-size="12" fill="#334155">3V3</text>
+  <text x="720" y="335" font-size="12" fill="#334155">VCC / VIN</text>
+
+  <!-- Row VCC spare -->
+  <rect x="40" y="350" width="820" height="40" fill="#f1f5f9" stroke="#e2e8f0"/>
+  <text x="70" y="375" font-size="13" font-weight="600" fill="#0f172a">3,3 V (reserv/parallell)</text>
+  <circle cx="230" cy="370" r="8" fill="#fff" stroke="#a16207" stroke-width="2"/>
+  <text x="248" y="375" font-size="13" fill="#713f12">Vit/brun</text>
+  <text x="400" y="375" font-size="12" fill="#334155">Par 4 (brun)</text>
+  <text x="560" y="375" font-size="12" fill="#334155">3V3</text>
+  <text x="720" y="375" font-size="12" fill="#334155">VCC / VIN</text>
+
+  <!-- Green spare note -->
+  <rect x="40" y="400" width="820" height="40" fill="#ecfdf5" stroke="#86efac"/>
+  <circle cx="70" cy="420" r="8" fill="#16a34a"/>
+  <text x="90" y="425" font-size="12" fill="#14532d">Grön + vit/grön (par 3) = reserv. Kan användas som extra GND eller framtida signal (används ej av ThermoFlow standard).</text>
+
+  <text x="450" y="470" text-anchor="middle" font-size="12" fill="#334155">Varför parvis? SDA+GND och SCL+GND i egna twisted pairs minskar störningar på I2C-bussen.</text>
+  <text x="450" y="495" text-anchor="middle" font-size="11" fill="#64748b">Alla GND-ledare kopplas ihop till samma jordplint. Alla 3V3-ledare till samma 3V3-plint.</text>
+</svg>

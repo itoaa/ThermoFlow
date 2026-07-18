@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" font-family="Segoe UI, system-ui, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#334155"/>
+    </marker>
+    <linearGradient id="boardGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1e3a5f"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="expGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#14532d"/>
+      <stop offset="100%" stop-color="#052e16"/>
+    </linearGradient>
+    <linearGradient id="sensGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7c2d12"/>
+      <stop offset="100%" stop-color="#431407"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="960" height="420" fill="#f8fafc"/>
+  <text x="480" y="28" text-anchor="middle" font-size="18" font-weight="700" fill="#0f172a">ThermoFlow — systemöversikt sensoranslutning</text>
+  <text x="480" y="48" text-anchor="middle" font-size="12" fill="#64748b">ESP32-S3-DevKit N16R8 → expansionskort (skruvplint) → Cat 5e/6 → SHT40</text>
+
+  <!-- ESP -->
+  <rect x="40" y="90" width="200" height="220" rx="10" fill="url(#boardGrad)" stroke="#38bdf8" stroke-width="2"/>
+  <text x="140" y="118" text-anchor="middle" font-size="13" font-weight="700" fill="#e0f2fe">ESP32-S3 DevKit</text>
+  <text x="140" y="138" text-anchor="middle" font-size="11" fill="#94a3b8">N16R8 (16 MB flash / 8 MB PSRAM)</text>
+  <rect x="60" y="155" width="160" height="28" rx="4" fill="#0ea5e9"/>
+  <text x="140" y="174" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">USB-C / UART</text>
+  <text x="70" y="210" font-size="12" fill="#bae6fd">GPIO 8  →  SDA</text>
+  <text x="70" y="232" font-size="12" fill="#bae6fd">GPIO 9  →  SCL</text>
+  <text x="70" y="254" font-size="12" fill="#bae6fd">3V3     →  matning</text>
+  <text x="70" y="276" font-size="12" fill="#bae6fd">GND     →  jord</text>
+
+  <!-- Arrow 1 -->
+  <line x1="250" y1="200" x2="300" y2="200" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="275" y="188" text-anchor="middle" font-size="10" fill="#64748b">header</text>
+
+  <!-- Expansion -->
+  <rect x="310" y="90" width="220" height="220" rx="10" fill="url(#expGrad)" stroke="#4ade80" stroke-width="2"/>
+  <text x="420" y="118" text-anchor="middle" font-size="13" font-weight="700" fill="#dcfce7">Expansionskort</text>
+  <text x="420" y="138" text-anchor="middle" font-size="11" fill="#86efac">skruvplintar för alla GPIO</text>
+  <g font-size="11" fill="#bbf7d0">
+    <rect x="330" y="155" width="90" height="22" rx="3" fill="#166534"/>
+    <text x="375" y="170" text-anchor="middle">plint GPIO8</text>
+    <rect x="430" y="155" width="90" height="22" rx="3" fill="#166534"/>
+    <text x="475" y="170" text-anchor="middle">plint GPIO9</text>
+    <rect x="330" y="185" width="90" height="22" rx="3" fill="#166534"/>
+    <text x="375" y="200" text-anchor="middle">plint 3V3</text>
+    <rect x="430" y="185" width="90" height="22" rx="3" fill="#166534"/>
+    <text x="475" y="200" text-anchor="middle">plint GND</text>
+  </g>
+  <text x="420" y="240" text-anchor="middle" font-size="11" fill="#86efac">Anslut Cat-kabel här</text>
+  <text x="420" y="260" text-anchor="middle" font-size="10" fill="#a7f3d0">(blå/orange/brun/grön)</text>
+  <text x="420" y="290" text-anchor="middle" font-size="10" fill="#86efac">I2C-buss gemensam för alla sensorer</text>
+
+  <!-- Arrow 2 -->
+  <line x1="540" y1="200" x2="600" y2="200" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="570" y="178" text-anchor="middle" font-size="10" fill="#64748b">Cat 5e / Cat 6</text>
+  <text x="570" y="192" text-anchor="middle" font-size="9" fill="#94a3b8">≤ 5–10 m</text>
+
+  <!-- Cable visual -->
+  <rect x="555" y="210" width="30" height="90" rx="4" fill="#e2e8f0" stroke="#94a3b8"/>
+  <line x1="562" y1="220" x2="562" y2="290" stroke="#2563eb" stroke-width="2"/>
+  <line x1="568" y1="220" x2="568" y2="290" stroke="#ea580c" stroke-width="2"/>
+  <line x1="574" y1="220" x2="574" y2="290" stroke="#a16207" stroke-width="2"/>
+  <line x1="580" y1="220" x2="580" y2="290" stroke="#16a34a" stroke-width="2"/>
+
+  <!-- Sensors -->
+  <g>
+    <rect x="620" y="80" width="300" height="55" rx="8" fill="url(#sensGrad)" stroke="#fb923c" stroke-width="1.5"/>
+    <text x="640" y="105" font-size="12" font-weight="700" fill="#ffedd5">SHT40 #1  ·  0x44  ·  ADDR→GND</text>
+    <text x="640" y="122" font-size="11" fill="#fdba74">VCC · GND · SCL · SDA</text>
+
+    <rect x="620" y="150" width="300" height="55" rx="8" fill="url(#sensGrad)" stroke="#fb923c" stroke-width="1.5"/>
+    <text x="640" y="175" font-size="12" font-weight="700" fill="#ffedd5">SHT40 #2  ·  0x45  ·  ADDR→VDD</text>
+    <text x="640" y="192" font-size="11" fill="#fdba74">parallell på samma I2C-buss</text>
+
+    <rect x="620" y="220" width="300" height="55" rx="8" fill="url(#sensGrad)" stroke="#fb923c" stroke-width="1.5"/>
+    <text x="640" y="245" font-size="12" font-weight="700" fill="#ffedd5">SHT40 #3  ·  0x46</text>
+    <text x="640" y="262" font-size="11" fill="#fdba74">valfri / modulberoende adress</text>
+
+    <rect x="620" y="290" width="300" height="55" rx="8" fill="url(#sensGrad)" stroke="#fb923c" stroke-width="1.5"/>
+    <text x="640" y="315" font-size="12" font-weight="700" fill="#ffedd5">SHT40 #4  ·  0x47</text>
+    <text x="640" y="332" font-size="11" fill="#fdba74">valfri / modulberoende adress</text>
+  </g>
+
+  <text x="480" y="400" text-anchor="middle" font-size="11" fill="#64748b">Alla SHT40 delar 3V3, GND, SDA och SCL. Endast I2C-adress skiljer dem åt.</text>
+</svg>
