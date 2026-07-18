@@ -23,9 +23,12 @@ Ingen separat “poll-tjänst” behövs. Manuell körning: **Actions → Docume
 
 1. Repo → **Settings → Pages**  
 2. **Build and deployment → Source:** *GitHub Actions*  
-3. Efter första lyckade körningen visas URL:en under Pages  
+3. Kör om workflow **Documentation** (eller pusha en docs-ändring)  
+4. När **deploy**-jobbet är grönt: öppna https://itoaa.github.io/ThermoFlow/  
 
 För organisation/repo med begränsningar: ge Actions behörighet att skriva till Pages (workflow permissions).
+
+> **OBS:** Före första lyckade deployen kan URL:en ge 404 även om Source är inställt — det är normalt.
 
 ## Lokal utveckling
 
